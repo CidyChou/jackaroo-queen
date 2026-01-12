@@ -7,7 +7,8 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        host: true, // 支持 IP 访问（等同于 '0.0.0.0'）
+        open: false, // 启动时不自动打开浏览器
       },
       plugins: [react()],
       define: {
