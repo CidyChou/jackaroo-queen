@@ -26,75 +26,53 @@ const createDeck = (): Card[] => {
   return deck.sort(() => Math.random() - 0.5);
 };
 
-// Now accepts playerCount to configure the session
+// --- Initialization ---
+
 export const createInitialState = (playerCount: number = 2): GameState => {
   let activeColors: PlayerColor[] = [];
-
   if (playerCount === 2) {
-    // 1v1: Red vs Yellow (Opposite sides)
     activeColors = ['red', 'yellow'];
   } else {
-    // 4 Players: Standard Jackaroo Circle
     activeColors = ['red', 'blue', 'yellow', 'green'];
   }
 
   const players: Player[] = activeColors.map((color) => {
-    const isHuman = color === 'red'; // P1 is always Human (Red)
-    
-    // Team Logic
-    // 2 Players: Red vs Yellow (Team 1 vs Team 2)
-    // 4 Players: Standard Cross Teams (Red/Yellow vs Blue/Green)
-    let team = 0;
-    if (playerCount === 2) {
-      team = color === 'red' ? 1 : 2;
-    } else {
-      team = (color === 'red' || color === 'yellow') ? 1 : 2;
-    }
-
     return {
       id: `player_${color}`,
       color,
-      team, 
+      team: (color === 'red' || color === 'yellow') ? 1 : 2, // 1v1 setup team logic
       hand: [],
       marbles: [],
       isFinished: false,
-      isBot: !isHuman 
+      isBot: color !== 'red' // P1 is Red
     };
   });
 
   const marbles: Record<string, Marble> = {};
+  
+  // NEW RULE: 1 Marble on Start, 3 in Base
   players.forEach(p => {
+    const startNodeId = `node_${START_POSITIONS[p.color]}`;
+    
     for (let i = 0; i < 4; i++) {
       const mId = `${p.color}_m_${i}`;
+      // First marble (index 0) goes to start
+      const isStarter = i === 0;
+      
       marbles[mId] = {
         id: mId,
         ownerId: p.id,
         color: p.color,
-        position: 'BASE',
+        position: isStarter ? startNodeId : 'BASE',
         isSafe: true
       };
       p.marbles.push(mId);
     }
   });
 
-  // Initial Deal - RIGGED for First Round
-  // Simplify: First game 100% chance for A and King for Human (Red)
-  const deck = createDeck();
+  // Initial Deal: Round 1 -> 4 Cards
+  let deck = createDeck();
   const playersWithCards = players.map(p => {
-    if (p.color === 'red') {
-      // Find an Ace and a King to guarantee a start
-      const aceIndex = deck.findIndex(c => c.rank === 'A');
-      const ace = deck.splice(aceIndex, 1)[0];
-      
-      const kingIndex = deck.findIndex(c => c.rank === 'K');
-      const king = deck.splice(kingIndex, 1)[0];
-      
-      // Take 2 more random cards
-      const others = deck.splice(0, 2);
-      
-      return { ...p, hand: [ace, king, ...others] };
-    }
-
     const hand = deck.splice(0, 4);
     return { ...p, hand };
   });
@@ -112,36 +90,20 @@ export const createInitialState = (playerCount: number = 2): GameState => {
     selectedMarbleId: null,
     possibleMoves: [],
     split7State: null,
-    lastActionLog: ['Welcome to Jackaroo Queen!', `Mode: ${playerCount} Players`]
+    lastActionLog: ['Welcome to Jackaroo 1v1!', 'Attack Enabled!']
   };
 };
 
 export const gameReducer = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
     case 'START_GAME': {
-      // Re-deal logic usually handled by re-init, but if we restart within component:
-      const newDeck = createDeck(); 
-      const newPlayers = state.players.map(p => {
-        const hand = newDeck.splice(0, 4);
-        return { ...p, hand };
-      });
-
-      return {
-        ...state,
-        phase: 'TURN_START',
-        deck: newDeck,
-        players: newPlayers,
-        currentRound: 1,
-        currentPlayerIndex: 0,
-        lastActionLog: ['Game Restarted.']
-      };
+      return createInitialState(state.players.length);
     }
 
     case 'SELECT_CARD': {
       if (state.phase !== 'TURN_START' && state.phase !== 'PLAYER_INPUT') return state;
       const player = state.players[state.currentPlayerIndex];
       const card = player.hand.find(c => c.id === action.cardId);
-      
       if (!card) return state;
 
       const moves = calculateValidMoves(state, player, card, null);
@@ -157,7 +119,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
 
     case 'SELECT_MARBLE': {
-      if (state.phase !== 'PLAYER_INPUT' && state.phase !== 'HANDLING_SPLIT_7') return state;
+      if (state.phase !== 'PLAYER_INPUT') return state;
       if (!state.selectedCardId) return state;
 
       const player = state.players[state.currentPlayerIndex];
@@ -175,20 +137,81 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
     case 'CONFIRM_MOVE': {
       if (!state.selectedCardId) return state;
-      
       const move = state.possibleMoves[0];
       if (!move) return state;
 
-      const nextState = executeMove(state, move);
+      // Special Handling for Force Discard (Attack)
+      if (move.type === 'force_discard') {
+         const attacker = state.players[state.currentPlayerIndex];
+         const victimIndex = (state.currentPlayerIndex + 1) % state.players.length;
+         const victim = state.players[victimIndex];
+         
+         // Auto-discard logic for simplicity as requested
+         // Randomly pick 1 card to burn from victim
+         const victimHand = [...victim.hand];
+         let burnedCardName = "Nothing";
+         
+         if (victimHand.length > 0) {
+            const ridx = Math.floor(Math.random() * victimHand.length);
+            const burned = victimHand.splice(ridx, 1)[0];
+            burnedCardName = burned.rank;
+            
+            // Update Victim Hand
+            const newPlayers = [...state.players];
+            newPlayers[victimIndex] = { ...victim, hand: victimHand };
+            state.players = newPlayers; // Mutating clone for next step
+         }
+
+         const logMsg = `${attacker.color} ATTACK! ${victim.color} discarded ${burnedCardName}.`;
+         
+         // Combo Rule: Attacker plays AGAIN.
+         // We consume the attacker's card used for attack
+         const cardToDiscard = attacker.hand.find(c => c.id === state.selectedCardId);
+         const attackerNewHand = attacker.hand.filter(c => c.id !== state.selectedCardId);
+         const updatedPlayers = [...state.players];
+         updatedPlayers[state.currentPlayerIndex] = { ...attacker, hand: attackerNewHand };
+         
+         const newDiscardPile = cardToDiscard ? [...state.discardPile, cardToDiscard] : state.discardPile;
+
+         return {
+            ...state,
+            players: updatedPlayers,
+            discardPile: newDiscardPile,
+            selectedCardId: null,
+            selectedMarbleId: null,
+            possibleMoves: [],
+            phase: 'TURN_START', // Immediately start turn again (no player index change)
+            lastActionLog: [...state.lastActionLog, logMsg, `${attacker.color} plays again!`]
+         };
+      }
+
+      // Normal Move Execution
+      const { nextState, events } = executeMove(state, move);
       const player = state.players[state.currentPlayerIndex];
       const card = player.hand.find(c => c.id === state.selectedCardId);
 
       let logMsg = `${player.isBot ? 'CPU' : 'Player'} (${player.color}) played ${card?.rank}`;
-      if (move.type === 'base_exit') logMsg += ' to Start';
-      if (move.killedMarbleIds && move.killedMarbleIds.length > 0) logMsg += ' - KILL!';
+      if (events.killedOpponent) logMsg += ' - KILL! (+1 Card)';
+      if (events.enteredHome) logMsg += ' - SCORED! (+1 Card)';
+
+      // Apply Bonus Cards immediately
+      let updatedPlayers = [...nextState.players];
+      let currentDeck = [...nextState.deck];
+      let currentPlayerHand = [...player.hand];
+
+      if (events.killedOpponent || events.enteredHome) {
+         if (currentDeck.length > 0) {
+            const bonusCard = currentDeck.pop();
+            if (bonusCard) currentPlayerHand.push(bonusCard);
+         }
+      }
+
+      updatedPlayers[state.currentPlayerIndex] = { ...player, hand: currentPlayerHand };
 
       return {
         ...nextState,
+        players: updatedPlayers,
+        deck: currentDeck,
         possibleMoves: [],
         phase: 'RESOLVING_MOVE',
         lastActionLog: [...state.lastActionLog, logMsg]
@@ -211,59 +234,82 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
 
     case 'RESOLVE_TURN': {
-      const currentPlayer = state.players[state.currentPlayerIndex];
+      const currentPlayerIndex = state.currentPlayerIndex;
+      const currentPlayer = state.players[currentPlayerIndex];
       const playedCardId = state.selectedCardId;
       
-      if (!playedCardId) return state;
+      // Remove played card if not already removed (Attack removes it earlier)
+      let newPlayers = [...state.players];
+      let newDiscardPile = [...state.discardPile];
 
-      const cardToDiscard = currentPlayer.hand.find(c => c.id === playedCardId);
-      const newHand = currentPlayer.hand.filter(c => c.id !== playedCardId);
-      
-      const updatedPlayers = [...state.players];
-      updatedPlayers[state.currentPlayerIndex] = { ...currentPlayer, hand: newHand };
+      if (playedCardId) {
+        const cardToDiscard = currentPlayer.hand.find(c => c.id === playedCardId);
+        const newHand = currentPlayer.hand.filter(c => c.id !== playedCardId);
+        newPlayers[currentPlayerIndex] = { ...currentPlayer, hand: newHand };
+        if (cardToDiscard) newDiscardPile.push(cardToDiscard);
+      }
 
-      const newDiscardPile = cardToDiscard ? [...state.discardPile, cardToDiscard] : state.discardPile;
-
-      const allHandsEmpty = updatedPlayers.every(p => p.hand.length === 0);
+      // Check Asymmetric Round End
+      // Round ends only when ALL players have 0 cards
+      const allHandsEmpty = newPlayers.every(p => p.hand.length === 0);
       
       if (allHandsEmpty) {
+        // --- NEW ROUND DEALING LOGIC (4-4-5) ---
         let deck = [...state.deck];
         let discard = [...newDiscardPile];
         
-        if (deck.length < updatedPlayers.length * 4) {
+        const nextRound = state.currentRound + 1;
+        
+        // Reshuffle after round 3 (End of 4-4-5 cycle) or if deck empty
+        if ((state.currentRound % 3 === 0) || deck.length < newPlayers.length * 5) {
            deck = [...deck, ...discard].sort(() => Math.random() - 0.5);
            discard = [];
         }
 
-        const nextRoundPlayers = updatedPlayers.map(p => ({
+        // Determine Cards to Deal (4-4-5 Pattern)
+        // Round 1 (done), Round 2=4, Round 3=5, Round 4=4...
+        // Pattern Index: (RoundNumber - 1) % 3
+        // R1(0)=4, R2(1)=4, R3(2)=5
+        const cardsToDeal = (nextRound - 1) % 3 === 2 ? 5 : 4;
+
+        const nextRoundPlayers = newPlayers.map(p => ({
           ...p,
-          hand: deck.splice(0, 4)
+          hand: deck.splice(0, cardsToDeal)
         }));
 
-        const nextRoundIndex = (state.currentPlayerIndex + 1) % state.players.length; 
+        // Rotate starting player for fair advantage
+        const nextStartPlayerIndex = (state.currentRound) % state.players.length; 
 
         return {
           ...state,
           players: nextRoundPlayers,
           deck,
           discardPile: discard,
-          currentPlayerIndex: nextRoundIndex,
-          currentRound: state.currentRound + 1,
+          currentPlayerIndex: nextStartPlayerIndex,
+          currentRound: nextRound,
           selectedCardId: null,
           selectedMarbleId: null,
           possibleMoves: [],
           phase: 'TURN_START',
-          lastActionLog: [...state.lastActionLog, `Round ${state.currentRound + 1} Started`]
+          lastActionLog: [...state.lastActionLog, `Round ${nextRound} - Deal ${cardsToDeal}`]
         };
       }
 
-      const nextPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
+      // --- NEXT TURN LOGIC ---
+      // Skip players who have no cards (Asymmetric play)
+      let nextIndex = (currentPlayerIndex + 1) % state.players.length;
+      let loopCount = 0;
+      
+      while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
+         nextIndex = (nextIndex + 1) % state.players.length;
+         loopCount++;
+      }
 
       return {
         ...state,
-        players: updatedPlayers,
+        players: newPlayers,
         discardPile: newDiscardPile,
-        currentPlayerIndex: nextPlayerIndex,
+        currentPlayerIndex: nextIndex,
         selectedCardId: null,
         selectedMarbleId: null,
         possibleMoves: [],

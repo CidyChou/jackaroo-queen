@@ -5,6 +5,7 @@ import { calculateValidMoves } from '../services/moveEngine';
 import { Board } from './Board';
 import { CardHand } from './CardHand';
 import { BurnNotification } from './BurnNotification';
+import { BurnZone } from './BurnZone'; // Import BurnZone
 import { AnimatePresence, motion } from 'framer-motion';
 import { getBestMove } from '../services/BotLogic';
 
@@ -21,15 +22,15 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   
   // UX States
   const [shakingCardId, setShakingCardId] = useState<string | null>(null);
+  const [isDraggingCard, setIsDraggingCard] = useState(false);
+  const [isHoveringBurn, setIsHoveringBurn] = useState(false);
 
   // --- Logic: Detect Deadlock (Scenario B) ---
-  // A deadlock occurs if the current player (human) has NO valid moves with ANY card.
   const isDeadlocked = useMemo(() => {
-    if (currentPlayer.isBot || gameState.phase !== 'PLAYER_INPUT') return false;
+    if (currentPlayer.isBot) return false;
+    if (gameState.phase !== 'PLAYER_INPUT' && gameState.phase !== 'TURN_START') return false;
     
-    // Check every card in hand. If find ONE valid move, we are not deadlocked.
     const hasAnyMove = currentPlayer.hand.some(card => {
-       // Check moves for this card against all owned marbles
        const moves = calculateValidMoves(gameState, currentPlayer, card, null);
        return moves.length > 0;
     });
@@ -41,7 +42,7 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     gameState.phase, 
     gameState.marbles, 
     gameState.currentRound,
-    gameState.currentPlayerIndex // Re-check when turn changes
+    gameState.currentPlayerIndex 
   ]);
 
   // --- Bot Turn Logic ---
@@ -95,6 +96,12 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   const handleCardSelect = (cardId: string) => {
     if (currentPlayer.isBot) return;
 
+    // Toggle Selection: If clicking the currently selected card, deselect it.
+    if (gameState.selectedCardId === cardId) {
+      dispatch({ type: 'CANCEL_SELECTION' });
+      return;
+    }
+
     // 1. If Deadlocked, we are selecting a card to BURN.
     if (isDeadlocked) {
       dispatch({ type: 'SELECT_CARD', cardId });
@@ -108,14 +115,20 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     const moves = calculateValidMoves(gameState, currentPlayer, card, null);
     
     if (moves.length === 0) {
-      // Scenario A: Invalid Card (Shake Effect)
       setShakingCardId(cardId);
       setTimeout(() => setShakingCardId(null), 600);
-      // We do NOT dispatch SELECT_CARD here, keeping the UI clean.
     } else {
-      // Valid Card
       dispatch({ type: 'SELECT_CARD', cardId });
     }
+  };
+
+  const handleManualBurn = (cardId: string) => {
+    // Select the card first to ensure state consistency
+    dispatch({ type: 'SELECT_CARD', cardId });
+    // Trigger burn immediately
+    dispatch({ type: 'BURN_CARD' });
+    setToastMessage("Card Burned 🔥");
+    setTimeout(() => setToastMessage(null), 1500);
   };
 
   const handleMarbleClick = (marbleId: string) => {
@@ -130,13 +143,15 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     dispatch({ type: 'SELECT_TARGET_NODE', nodeId });
   };
 
-  // Get selected card rank for notification
   const selectedCard = currentPlayer.hand.find(c => c.id === gameState.selectedCardId);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden relative selection:bg-amber-500/30">
       
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black z-0 pointer-events-none"></div>
+
+      {/* Burn Zone Indicator (Top Right) */}
+      <BurnZone isVisible={isDraggingCard} isHovered={isHoveringBurn} />
 
       {/* Header / HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
@@ -209,9 +224,9 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
             )}
           </AnimatePresence>
 
-          {/* New Burn Notification replaces the old modal */}
+          {/* New Burn Notification replaces the old modal (Shows only if deadlocked and NOT dragging) */}
           <BurnNotification 
-            isVisible={isDeadlocked}
+            isVisible={isDeadlocked && !isDraggingCard}
             cardRank={selectedCard?.rank}
             onBurn={() => dispatch({ type: 'BURN_CARD' })}
           />
@@ -226,6 +241,17 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
           shakingCardId={shakingCardId}
           isDeadlocked={isDeadlocked}
           onCardSelect={handleCardSelect}
+          // Drag Props
+          onDragStart={() => {
+            setIsDraggingCard(true);
+            // Exclusive Focus: Clear selection when dragging starts to avoid confusion
+            if (gameState.selectedCardId) {
+               dispatch({ type: 'CANCEL_SELECTION' });
+            }
+          }}
+          onDragEnd={() => setIsDraggingCard(false)}
+          onHoverBurnZone={setIsHoveringBurn}
+          onBurnCard={handleManualBurn}
         />
       </div>
     </div>

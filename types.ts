@@ -43,12 +43,18 @@ export interface BoardNode {
   isHomeEntranceFor?: PlayerColor; // Entry to safe zone
 }
 
-export type MoveType = 'standard' | 'base_exit' | 'swap' | 'kill_path' | 'split_move';
+export type MoveType = 
+  | 'standard' 
+  | 'base_exit' 
+  | 'swap' 
+  | 'kill_path' 
+  | 'split_move'
+  | 'force_discard'; // New Attack Type
 
 export interface MoveCandidate {
   type: MoveType;
   cardId: string;
-  marbleId: string;
+  marbleId?: string; // Optional because force_discard doesn't use a marble
   targetPosition?: string; // Destination Node ID
   swapTargetMarbleId?: string; // For Jack
   stepsUsed?: number; // For 7
@@ -63,6 +69,7 @@ export type GamePhase =
   | 'PLAYER_INPUT' // Waiting for user to select card or marble
   | 'HANDLING_SPLIT_7' // Special state for 7: choosing 2nd marble/steps
   | 'HANDLING_JACK_SWAP' // Special state for Jack: choosing target
+  | 'OPPONENT_DISCARD' // New: Waiting for opponent to discard (or auto)
   | 'RESOLVING_MOVE' // Calculating effects, kills, animations (conceptually)
   | 'CHECK_WIN' // Check if player finished
   | 'NEXT_TURN' // Pass turn to next player
