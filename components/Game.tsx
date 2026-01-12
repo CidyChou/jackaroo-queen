@@ -150,8 +150,17 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
       
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black z-0 pointer-events-none"></div>
 
-      {/* Burn Zone Indicator (Top Right) */}
-      <BurnZone isVisible={isDraggingCard} isHovered={isHoveringBurn} />
+      {/* Burn Zone: Dual Mode (Drop + Click) */}
+      <BurnZone 
+        isVisible={isDraggingCard} 
+        isHovered={isHoveringBurn} 
+        hasSelectedCard={!!gameState.selectedCardId && !currentPlayer.isBot}
+        onClick={() => {
+           if (gameState.selectedCardId) {
+             handleManualBurn(gameState.selectedCardId);
+           }
+        }}
+      />
 
       {/* Header / HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Card } from '../types';
-import { motion, useMotionValue, useTransform, PanInfo, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useTransform, PanInfo, AnimatePresence, TargetAndTransition } from 'framer-motion';
 
 interface DraggableCardProps {
   card: Card;
@@ -15,7 +15,7 @@ interface DraggableCardProps {
   onBurn: (cardId: string) => void;
 }
 
-export const DraggableCard: React.FC<DraggableCardProps> = ({
+const DraggableCardComponent: React.FC<DraggableCardProps> = ({
   card, isSelected, isShaking, isDeadlocked,
   onSelect, onDragStart, onDragEnd, onHoverBurnZone, onBurn
 }) => {
@@ -64,7 +64,7 @@ export const DraggableCard: React.FC<DraggableCardProps> = ({
   };
 
   // Logic to determine animation state
-  const getAnimation = () => {
+  const getAnimation = (): TargetAndTransition => {
     // 3. Define Animation Variants
     if (burnStage === 'burning') {
       return { 
@@ -76,8 +76,8 @@ export const DraggableCard: React.FC<DraggableCardProps> = ({
         y: y.get(),
         rotate: rotate.get(),
         transition: { 
-            delay: 0.2, // The Pause (1 second)
-            duration: 0.2, // The Slow Fade (0.8 seconds)
+            delay: 0.2, // The Pause
+            duration: 0.2, // The Slow Fade
             ease: "easeInOut"
         }
       };
@@ -98,7 +98,7 @@ export const DraggableCard: React.FC<DraggableCardProps> = ({
 
   return (
     <motion.div
-      layout
+      // NOTE: 'layout' prop removed to prevent drag interruption during parent re-renders
       initial={{ scale: 0.8, opacity: 0, y: 50 }}
       animate={{ 
         scale: 1, 
@@ -183,3 +183,5 @@ export const DraggableCard: React.FC<DraggableCardProps> = ({
     </motion.div>
   );
 };
+
+export const DraggableCard = React.memo(DraggableCardComponent);
