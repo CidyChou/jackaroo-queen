@@ -89,6 +89,7 @@ export const createInitialState = (playerCount: number = 2): GameState => {
     selectedCardId: null,
     selectedMarbleId: null,
     possibleMoves: [],
+    pendingAttackerIndex: null,
     split7State: null,
     lastActionLog: ['Welcome to Jackaroo 1v1!', 'Attack Enabled!']
   };
@@ -106,6 +107,17 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const card = player.hand.find(c => c.id === action.cardId);
       if (!card) return state;
 
+      // --- INTERCEPTION FOR CARD 10 (HUMAN ONLY) ---
+      if (card.rank === '10' && !player.isBot) {
+        return {
+          ...state,
+          phase: 'DECIDING_10',
+          selectedCardId: action.cardId,
+          selectedMarbleId: null,
+          possibleMoves: [] // Don't show moves yet
+        };
+      }
+
       const moves = calculateValidMoves(state, player, card, null);
 
       return {
@@ -116,6 +128,49 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         possibleMoves: moves,
         split7State: null
       };
+    }
+
+    case 'RESOLVE_10_DECISION': {
+      if (state.phase !== 'DECIDING_10') return state;
+      const player = state.players[state.currentPlayerIndex];
+      const card = player.hand.find(c => c.id === state.selectedCardId);
+      if (!card) return state;
+
+      if (action.choice === 'MOVE') {
+        // Option 1: Treat as standard move (calculate 10 steps)
+        const moves = calculateValidMoves(state, player, card, null);
+        // Filter out any 'force_discard' options if they exist, keep only movement
+        const standardMoves = moves.filter(m => m.type !== 'force_discard');
+
+        return {
+          ...state,
+          phase: 'PLAYER_INPUT',
+          possibleMoves: standardMoves
+        };
+      } else {
+        // Option 2: ATTACK (Force Discard)
+        // 1. Burn the 10 immediately
+        const newHand = player.hand.filter(c => c.id !== card.id);
+        const newDiscard = [...state.discardPile, card];
+        const newPlayers = [...state.players];
+        newPlayers[state.currentPlayerIndex] = { ...player, hand: newHand };
+
+        // 2. Set context to return
+        const attackerIdx = state.currentPlayerIndex;
+        const victimIdx = (attackerIdx + 1) % state.players.length;
+
+        return {
+          ...state,
+          players: newPlayers,
+          discardPile: newDiscard,
+          currentPlayerIndex: victimIdx,
+          pendingAttackerIndex: attackerIdx,
+          phase: 'OPPONENT_DISCARD',
+          selectedCardId: null,
+          possibleMoves: [],
+          lastActionLog: [...state.lastActionLog, `${player.color} played 10: ATTACK!`]
+        };
+      }
     }
 
     case 'SELECT_MARBLE': {
@@ -140,48 +195,32 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const move = state.possibleMoves[0];
       if (!move) return state;
 
-      // Special Handling for Force Discard (Attack)
+      // Special Handling for Force Discard (From Bot or Red Q)
       if (move.type === 'force_discard') {
+         // Reusing the RESOLVE_10_DECISION 'ATTACK' logic mostly, but specific for non-10 triggers
          const attacker = state.players[state.currentPlayerIndex];
-         const victimIndex = (state.currentPlayerIndex + 1) % state.players.length;
-         const victim = state.players[victimIndex];
-         
-         // Auto-discard logic for simplicity as requested
-         // Randomly pick 1 card to burn from victim
-         const victimHand = [...victim.hand];
-         let burnedCardName = "Nothing";
-         
-         if (victimHand.length > 0) {
-            const ridx = Math.floor(Math.random() * victimHand.length);
-            const burned = victimHand.splice(ridx, 1)[0];
-            burnedCardName = burned.rank;
-            
-            // Update Victim Hand
-            const newPlayers = [...state.players];
-            newPlayers[victimIndex] = { ...victim, hand: victimHand };
-            state.players = newPlayers; // Mutating clone for next step
-         }
+         const card = attacker.hand.find(c => c.id === state.selectedCardId);
+         if (!card) return state;
 
-         const logMsg = `${attacker.color} ATTACK! ${victim.color} discarded ${burnedCardName}.`;
-         
-         // Combo Rule: Attacker plays AGAIN.
-         // We consume the attacker's card used for attack
-         const cardToDiscard = attacker.hand.find(c => c.id === state.selectedCardId);
-         const attackerNewHand = attacker.hand.filter(c => c.id !== state.selectedCardId);
-         const updatedPlayers = [...state.players];
-         updatedPlayers[state.currentPlayerIndex] = { ...attacker, hand: attackerNewHand };
-         
-         const newDiscardPile = cardToDiscard ? [...state.discardPile, cardToDiscard] : state.discardPile;
+         const newHand = attacker.hand.filter(c => c.id !== card.id);
+         const newDiscard = [...state.discardPile, card];
+         const newPlayers = [...state.players];
+         newPlayers[state.currentPlayerIndex] = { ...attacker, hand: newHand };
 
+         const attackerIdx = state.currentPlayerIndex;
+         const victimIdx = (attackerIdx + 1) % state.players.length;
+         
+         // If Victim is bot, we might want to auto-resolve here, but let's stick to the Phase pattern for consistency
          return {
             ...state,
-            players: updatedPlayers,
-            discardPile: newDiscardPile,
+            players: newPlayers,
+            discardPile: newDiscard,
+            currentPlayerIndex: victimIdx,
+            pendingAttackerIndex: attackerIdx,
+            phase: 'OPPONENT_DISCARD', // Enter waiting state
             selectedCardId: null,
-            selectedMarbleId: null,
             possibleMoves: [],
-            phase: 'TURN_START', // Immediately start turn again (no player index change)
-            lastActionLog: [...state.lastActionLog, logMsg, `${attacker.color} plays again!`]
+            lastActionLog: [...state.lastActionLog, `${attacker.color} used ${card.rank}: ATTACK!`]
          };
       }
 
@@ -219,10 +258,46 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
 
     case 'BURN_CARD': {
-       if (!state.selectedCardId) return state;
        const player = state.players[state.currentPlayerIndex];
-       const card = player.hand.find(c => c.id === state.selectedCardId);
        
+       // --- SPECIAL LOGIC: VICTIM BURNING UNDER ATTACK ---
+       if (state.phase === 'OPPONENT_DISCARD') {
+          if (!state.selectedCardId && player.hand.length > 0) return state; // Must select
+
+          let burnedCardName = "Last Card";
+          let newHand = [...player.hand];
+          let cardToBurn = state.discardPile; // temp ref
+
+          if (player.hand.length > 0) {
+              const c = player.hand.find(x => x.id === state.selectedCardId);
+              if (c) {
+                  burnedCardName = c.rank;
+                  newHand = player.hand.filter(x => x.id !== c.id);
+                  cardToBurn = [...state.discardPile, c];
+              }
+          }
+
+          const newPlayers = [...state.players];
+          newPlayers[state.currentPlayerIndex] = { ...player, hand: newHand };
+          
+          // RETURN TURN TO ATTACKER
+          const nextPlayerIdx = state.pendingAttackerIndex !== null ? state.pendingAttackerIndex : state.currentPlayerIndex;
+
+          return {
+              ...state,
+              players: newPlayers,
+              discardPile: cardToBurn,
+              currentPlayerIndex: nextPlayerIdx,
+              pendingAttackerIndex: null, // Reset
+              phase: 'TURN_START', // Attacker starts turn again
+              selectedCardId: null,
+              lastActionLog: [...state.lastActionLog, `${player.color} discarded ${burnedCardName}.`, `Turn returns to Attacker!`]
+          };
+       }
+
+       // Normal Burn
+       if (!state.selectedCardId) return state;
+       const card = player.hand.find(c => c.id === state.selectedCardId);
        const logMsg = `${player.isBot ? 'CPU' : 'Player'} burned ${card?.rank}`;
 
        return {

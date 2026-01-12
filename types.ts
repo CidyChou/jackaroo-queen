@@ -67,9 +67,10 @@ export type GamePhase =
   | 'IDLE' // Before game starts
   | 'TURN_START' // Draw cards if needed, check can play
   | 'PLAYER_INPUT' // Waiting for user to select card or marble
+  | 'DECIDING_10' // User clicked 10, needs to choose Move or Attack
   | 'HANDLING_SPLIT_7' // Special state for 7: choosing 2nd marble/steps
   | 'HANDLING_JACK_SWAP' // Special state for Jack: choosing target
-  | 'OPPONENT_DISCARD' // New: Waiting for opponent to discard (or auto)
+  | 'OPPONENT_DISCARD' // Waiting for victim to discard
   | 'RESOLVING_MOVE' // Calculating effects, kills, animations (conceptually)
   | 'CHECK_WIN' // Check if player finished
   | 'NEXT_TURN' // Pass turn to next player
@@ -92,6 +93,9 @@ export interface GameState {
   selectedMarbleId: string | null;
   possibleMoves: MoveCandidate[]; // Calculated valid moves for current context
   
+  // Logic for Attack Return
+  pendingAttackerIndex: number | null; // Stores who played the 10 so turn can return to them
+
   // Complex Move Context
   split7State: {
     firstMoveUsed: number | null; // How many steps used for first marble
@@ -106,6 +110,7 @@ export interface GameState {
 export type GameAction =
   | { type: 'START_GAME' }
   | { type: 'SELECT_CARD'; cardId: string }
+  | { type: 'RESOLVE_10_DECISION'; choice: 'MOVE' | 'ATTACK' }
   | { type: 'DESELECT_CARD' }
   | { type: 'SELECT_MARBLE'; marbleId: string }
   | { type: 'SELECT_TARGET_NODE'; nodeId: string } 
