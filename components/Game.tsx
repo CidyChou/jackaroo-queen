@@ -6,27 +6,30 @@ import { CardHand } from './CardHand';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getBestMove } from '../services/BotLogic';
 
-export const Game: React.FC = () => {
-  const [gameState, dispatch] = useReducer(enhancedGameReducer, null, createInitialState);
+interface GameProps {
+  playerCount: number;
+  onExit: () => void;
+}
+
+export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
+  // Lazy initialization of state based on playerCount
+  const [gameState, dispatch] = useReducer(enhancedGameReducer, playerCount, createInitialState);
+  
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Bot Turn Logic
   useEffect(() => {
-    // Only run if it's a Bot's turn and we are in the starting phase of a turn
     if (!currentPlayer.isBot || gameState.phase !== 'TURN_START') return;
 
     let isCancelled = false;
 
     const executeBotTurn = async () => {
-       // 1. Thinking Time
        await new Promise(r => setTimeout(r, 1200));
        if (isCancelled) return;
 
-       // 2. Decide
        const decision = getBestMove(gameState, currentPlayer);
 
-       // 3. Act
        if (decision.action === 'BURN') {
           dispatch({ type: 'SELECT_CARD', cardId: decision.cardId });
           setToastMessage("CPU Burning Card...");
@@ -34,13 +37,11 @@ export const Game: React.FC = () => {
           dispatch({ type: 'BURN_CARD' });
        } else if (decision.action === 'MOVE' && decision.move) {
           dispatch({ type: 'SELECT_CARD', cardId: decision.cardId });
-          await new Promise(r => setTimeout(r, 600)); // Show card selected
+          await new Promise(r => setTimeout(r, 600)); 
           
           dispatch({ type: 'SELECT_MARBLE', marbleId: decision.move.marbleId });
           
           if (decision.move.targetPosition) {
-             // Dispatch target if needed, otherwise confirm
-             // Our enhanced reducer handles target selection -> auto confirm
              dispatch({ type: 'SELECT_TARGET_NODE', nodeId: decision.move.targetPosition });
           } else {
              dispatch({ type: 'CONFIRM_MOVE' });
@@ -49,11 +50,10 @@ export const Game: React.FC = () => {
     };
 
     executeBotTurn();
-
     return () => { isCancelled = true; };
-  }, [currentPlayer, gameState.phase, gameState.currentRound]); // Dep check
+  }, [currentPlayer, gameState.phase, gameState.currentRound]);
 
-  // Animation / Turn Resolution Effect
+  // Turn Resolution
   useEffect(() => {
     if (gameState.phase === 'RESOLVING_MOVE') {
       const timer = setTimeout(() => {
@@ -64,29 +64,25 @@ export const Game: React.FC = () => {
     }
   }, [gameState.phase]);
 
-  // Handle Marble Click
+  // Handlers
   const handleMarbleClick = (marbleId: string) => {
-    if (currentPlayer.isBot) return; // Lock UI
+    if (currentPlayer.isBot) return; 
     if (gameState.phase !== 'PLAYER_INPUT') return;
     dispatch({ type: 'SELECT_MARBLE', marbleId });
   };
 
-  // Handle Node Click (Targeting)
   const handleNodeClick = (nodeId: string) => {
-    if (currentPlayer.isBot) return; // Lock UI
+    if (currentPlayer.isBot) return; 
     if (gameState.phase !== 'PLAYER_INPUT') return;
     dispatch({ type: 'SELECT_TARGET_NODE', nodeId });
   };
 
-  // Burn Card Check
   const canBurn = !currentPlayer.isBot && gameState.selectedCardId && gameState.possibleMoves.length === 0;
 
-  // Helper for hint text
   const getNoMoveHint = () => {
     const playerMarbles = gameState.marbles; 
     const myMarbles = currentPlayer.marbles.map(id => playerMarbles[id]);
     const allInBase = myMarbles.every(m => m.position === 'BASE');
-    
     if (allInBase) return "Need an Ace or King to exit Base.";
     return "Blocked or no valid targets.";
   };
@@ -94,24 +90,30 @@ export const Game: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden relative selection:bg-amber-500/30">
       
-      {/* Background Ambience */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black z-0 pointer-events-none"></div>
 
       {/* Header / HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
-        <div>
-          <h1 className="text-3xl font-black text-amber-500 drop-shadow-lg tracking-wider">JACKAROO KING</h1>
+        <div className="pointer-events-auto">
+          {/* Back Button */}
+          <button 
+            onClick={onExit}
+            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-2 group"
+          >
+            <span className="group-hover:-translate-x-1 transition-transform">←</span> Exit Match
+          </button>
+
+          <h1 className="text-3xl font-black text-amber-500 drop-shadow-lg tracking-wider">JACKAROO</h1>
           <div className="bg-black/50 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 mt-2 flex items-center gap-4">
              <div className="text-sm text-slate-400">Round <span className="text-white font-bold text-lg">{gameState.currentRound}</span></div>
              
-             {/* Turn Indicator */}
              <div className={`px-3 py-1 rounded font-bold text-sm uppercase transition-colors duration-300 flex items-center gap-2
                ${currentPlayer.isBot ? 'bg-yellow-900/50 text-yellow-200' : 'bg-green-900/50 text-green-200'}
              `}>
                 {currentPlayer.isBot ? (
                   <>
                     <span className="w-2 h-2 bg-yellow-400 rounded-full animate-ping"></span>
-                    CPU THINKING
+                    Thinking
                   </>
                 ) : (
                   <>
@@ -148,7 +150,6 @@ export const Game: React.FC = () => {
             onNodeClick={handleNodeClick}
           />
 
-          {/* Toast / Notification Overlay */}
           <AnimatePresence>
             {toastMessage && (
                <motion.div
@@ -162,7 +163,6 @@ export const Game: React.FC = () => {
             )}
           </AnimatePresence>
 
-          {/* Burn Card Overlay (Human Only) */}
           <AnimatePresence>
             {canBurn && gameState.phase === 'PLAYER_INPUT' && (
               <motion.div 
@@ -184,18 +184,6 @@ export const Game: React.FC = () => {
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Start Game Overlay */}
-          {gameState.phase === 'IDLE' && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-full">
-              <button 
-                onClick={() => dispatch({ type: 'START_GAME' })}
-                className="bg-green-600 hover:bg-green-500 text-white text-2xl font-bold py-4 px-12 rounded-full shadow-[0_0_30px_rgba(22,163,74,0.6)] transform hover:scale-105 transition-all"
-              >
-                START 1v1 GAME
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

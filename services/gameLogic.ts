@@ -26,20 +26,41 @@ const createDeck = (): Card[] => {
   return deck.sort(() => Math.random() - 0.5);
 };
 
-export const createInitialState = (): GameState => {
-  // 1v1 Setup: Red (Human) vs Yellow (Bot)
-  // We pick Yellow because it's usually opposite or nicely spaced (index 0 and 2 in standard colors)
-  const activeColors: PlayerColor[] = ['red', 'yellow']; 
+// Now accepts playerCount to configure the session
+export const createInitialState = (playerCount: number = 2): GameState => {
+  let activeColors: PlayerColor[] = [];
 
-  const players: Player[] = activeColors.map((color, index) => ({
-    id: `player_${color}`,
-    color,
-    team: index + 1, // Individual teams for 1v1
-    hand: [],
-    marbles: [],
-    isFinished: false,
-    isBot: index === 1 // Player 2 (Yellow) is Bot
-  }));
+  if (playerCount === 2) {
+    // 1v1: Red vs Yellow (Opposite sides)
+    activeColors = ['red', 'yellow'];
+  } else {
+    // 4 Players: Standard Jackaroo Circle
+    activeColors = ['red', 'blue', 'yellow', 'green'];
+  }
+
+  const players: Player[] = activeColors.map((color) => {
+    const isHuman = color === 'red'; // P1 is always Human (Red)
+    
+    // Team Logic
+    // 2 Players: Red vs Yellow (Team 1 vs Team 2)
+    // 4 Players: Standard Cross Teams (Red/Yellow vs Blue/Green)
+    let team = 0;
+    if (playerCount === 2) {
+      team = color === 'red' ? 1 : 2;
+    } else {
+      team = (color === 'red' || color === 'yellow') ? 1 : 2;
+    }
+
+    return {
+      id: `player_${color}`,
+      color,
+      team, 
+      hand: [],
+      marbles: [],
+      isFinished: false,
+      isBot: !isHuman 
+    };
+  });
 
   const marbles: Record<string, Marble> = {};
   players.forEach(p => {
@@ -56,27 +77,35 @@ export const createInitialState = (): GameState => {
     }
   });
 
+  // Initial Deal
+  const deck = createDeck();
+  const playersWithCards = players.map(p => {
+    const hand = deck.splice(0, 4);
+    return { ...p, hand };
+  });
+
   return {
-    players,
+    players: playersWithCards,
     marbles,
     board: generateBoard(),
-    deck: createDeck(),
+    deck,
     discardPile: [],
     currentPlayerIndex: 0,
     currentRound: 1,
-    phase: 'IDLE',
+    phase: 'TURN_START',
     selectedCardId: null,
     selectedMarbleId: null,
     possibleMoves: [],
     split7State: null,
-    lastActionLog: ['Welcome to Jackaroo King!']
+    lastActionLog: ['Welcome to Jackaroo King!', `Mode: ${playerCount} Players`]
   };
 };
 
 export const gameReducer = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
     case 'START_GAME': {
-      const newDeck = createDeck(); // Fresh deck
+      // Re-deal logic usually handled by re-init, but if we restart within component:
+      const newDeck = createDeck(); 
       const newPlayers = state.players.map(p => {
         const hand = newDeck.splice(0, 4);
         return { ...p, hand };
@@ -89,7 +118,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         players: newPlayers,
         currentRound: 1,
         currentPlayerIndex: 0,
-        lastActionLog: ['Game Started. You are RED.']
+        lastActionLog: ['Game Restarted.']
       };
     }
 
@@ -100,7 +129,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       
       if (!card) return state;
 
-      // Calculate moves for ALL marbles to see what's possible
       const moves = calculateValidMoves(state, player, card, null);
 
       return {
@@ -121,7 +149,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const card = player.hand.find(c => c.id === state.selectedCardId);
       if (!card) return state;
       
-      // Calculate moves specifically for this marble
       const moves = calculateValidMoves(state, player, card, action.marbleId);
 
       return {
@@ -134,8 +161,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     case 'CONFIRM_MOVE': {
       if (!state.selectedCardId) return state;
       
-      // Logic for selecting move from 'possibleMoves'
-      // Default to first valid move if specific target logic wasn't fully filtered in interaction layer
       const move = state.possibleMoves[0];
       if (!move) return state;
 
@@ -147,10 +172,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       if (move.type === 'base_exit') logMsg += ' to Start';
       if (move.killedMarbleIds && move.killedMarbleIds.length > 0) logMsg += ' - KILL!';
 
-      // IMPORTANT: We do NOT advance player yet. 
-      // We switch phase to RESOLVING_MOVE to let animations play in the UI.
-      // The UI will trigger RESOLVE_TURN after a timeout.
-      
       return {
         ...nextState,
         possibleMoves: [],
@@ -168,18 +189,17 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
        return {
          ...state,
-         phase: 'RESOLVING_MOVE', // Short delay for visual feedback
+         phase: 'RESOLVING_MOVE', 
          possibleMoves: [],
          lastActionLog: [...state.lastActionLog, logMsg]
        };
     }
 
     case 'RESOLVE_TURN': {
-      // 1. Remove Card from Hand
       const currentPlayer = state.players[state.currentPlayerIndex];
       const playedCardId = state.selectedCardId;
       
-      if (!playedCardId) return state; // Should not happen
+      if (!playedCardId) return state;
 
       const cardToDiscard = currentPlayer.hand.find(c => c.id === playedCardId);
       const newHand = currentPlayer.hand.filter(c => c.id !== playedCardId);
@@ -189,15 +209,12 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
       const newDiscardPile = cardToDiscard ? [...state.discardPile, cardToDiscard] : state.discardPile;
 
-      // 2. Check Round End (All hands empty)
       const allHandsEmpty = updatedPlayers.every(p => p.hand.length === 0);
       
       if (allHandsEmpty) {
-        // Start New Round
         let deck = [...state.deck];
         let discard = [...newDiscardPile];
         
-        // Reshuffle if needed (shouldn't be for standard jackaroo until late game, but good safety)
         if (deck.length < updatedPlayers.length * 4) {
            deck = [...deck, ...discard].sort(() => Math.random() - 0.5);
            discard = [];
@@ -225,7 +242,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         };
       }
 
-      // 3. Normal Turn Switch
       const nextPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
 
       return {
@@ -255,14 +271,11 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
   }
 };
 
-// Override the reducer locally to fix the recursion issue cleaner
 export const enhancedGameReducer = (state: GameState, action: GameAction): GameState => {
   if (action.type === 'SELECT_TARGET_NODE') {
-     // Pre-processing: Filter possible moves to the one matching target
      const targetMove = state.possibleMoves.find(m => m.targetPosition === action.nodeId);
      if (targetMove) {
        const nextState = { ...state, possibleMoves: [targetMove] };
-       // Now confirm
        return gameReducer(nextState, { type: 'CONFIRM_MOVE' });
      }
   }
