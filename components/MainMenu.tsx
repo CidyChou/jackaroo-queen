@@ -30,7 +30,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         className="z-10 text-center mb-16"
       >
         <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600 drop-shadow-2xl mb-4 tracking-tighter">
-          JACKAROO<br/>KING
+          JACKAROO<br/>QUEEN
         </h1>
         <p className="text-slate-400 text-lg uppercase tracking-widest font-bold border-t border-slate-800 pt-4 mt-4 inline-block">The Royal Board Game</p>
       </motion.div>

@@ -77,9 +77,24 @@ export const createInitialState = (playerCount: number = 2): GameState => {
     }
   });
 
-  // Initial Deal
+  // Initial Deal - RIGGED for First Round
+  // Simplify: First game 100% chance for A and King for Human (Red)
   const deck = createDeck();
   const playersWithCards = players.map(p => {
+    if (p.color === 'red') {
+      // Find an Ace and a King to guarantee a start
+      const aceIndex = deck.findIndex(c => c.rank === 'A');
+      const ace = deck.splice(aceIndex, 1)[0];
+      
+      const kingIndex = deck.findIndex(c => c.rank === 'K');
+      const king = deck.splice(kingIndex, 1)[0];
+      
+      // Take 2 more random cards
+      const others = deck.splice(0, 2);
+      
+      return { ...p, hand: [ace, king, ...others] };
+    }
+
     const hand = deck.splice(0, 4);
     return { ...p, hand };
   });
@@ -97,7 +112,7 @@ export const createInitialState = (playerCount: number = 2): GameState => {
     selectedMarbleId: null,
     possibleMoves: [],
     split7State: null,
-    lastActionLog: ['Welcome to Jackaroo King!', `Mode: ${playerCount} Players`]
+    lastActionLog: ['Welcome to Jackaroo Queen!', `Mode: ${playerCount} Players`]
   };
 };
 

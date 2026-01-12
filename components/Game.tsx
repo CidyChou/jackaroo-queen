@@ -1,8 +1,10 @@
 
-import React, { useReducer, useEffect, useState } from 'react';
+import React, { useReducer, useEffect, useState, useMemo } from 'react';
 import { createInitialState, enhancedGameReducer } from '../services/gameLogic';
+import { calculateValidMoves } from '../services/moveEngine';
 import { Board } from './Board';
 import { CardHand } from './CardHand';
+import { BurnNotification } from './BurnNotification';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getBestMove } from '../services/BotLogic';
 
@@ -12,13 +14,37 @@ interface GameProps {
 }
 
 export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
-  // Lazy initialization of state based on playerCount
   const [gameState, dispatch] = useReducer(enhancedGameReducer, playerCount, createInitialState);
   
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // UX States
+  const [shakingCardId, setShakingCardId] = useState<string | null>(null);
 
-  // Bot Turn Logic
+  // --- Logic: Detect Deadlock (Scenario B) ---
+  // A deadlock occurs if the current player (human) has NO valid moves with ANY card.
+  const isDeadlocked = useMemo(() => {
+    if (currentPlayer.isBot || gameState.phase !== 'PLAYER_INPUT') return false;
+    
+    // Check every card in hand. If find ONE valid move, we are not deadlocked.
+    const hasAnyMove = currentPlayer.hand.some(card => {
+       // Check moves for this card against all owned marbles
+       const moves = calculateValidMoves(gameState, currentPlayer, card, null);
+       return moves.length > 0;
+    });
+
+    return !hasAnyMove;
+  }, [
+    currentPlayer.isBot, 
+    currentPlayer.hand, 
+    gameState.phase, 
+    gameState.marbles, 
+    gameState.currentRound,
+    gameState.currentPlayerIndex // Re-check when turn changes
+  ]);
+
+  // --- Bot Turn Logic ---
   useEffect(() => {
     if (!currentPlayer.isBot || gameState.phase !== 'TURN_START') return;
 
@@ -53,7 +79,7 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     return () => { isCancelled = true; };
   }, [currentPlayer, gameState.phase, gameState.currentRound]);
 
-  // Turn Resolution
+  // --- Turn Resolution ---
   useEffect(() => {
     if (gameState.phase === 'RESOLVING_MOVE') {
       const timer = setTimeout(() => {
@@ -64,7 +90,34 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     }
   }, [gameState.phase]);
 
-  // Handlers
+  // --- Handlers ---
+
+  const handleCardSelect = (cardId: string) => {
+    if (currentPlayer.isBot) return;
+
+    // 1. If Deadlocked, we are selecting a card to BURN.
+    if (isDeadlocked) {
+      dispatch({ type: 'SELECT_CARD', cardId });
+      return;
+    }
+
+    // 2. If Normal Play, check if card is valid
+    const card = currentPlayer.hand.find(c => c.id === cardId);
+    if (!card) return;
+
+    const moves = calculateValidMoves(gameState, currentPlayer, card, null);
+    
+    if (moves.length === 0) {
+      // Scenario A: Invalid Card (Shake Effect)
+      setShakingCardId(cardId);
+      setTimeout(() => setShakingCardId(null), 600);
+      // We do NOT dispatch SELECT_CARD here, keeping the UI clean.
+    } else {
+      // Valid Card
+      dispatch({ type: 'SELECT_CARD', cardId });
+    }
+  };
+
   const handleMarbleClick = (marbleId: string) => {
     if (currentPlayer.isBot) return; 
     if (gameState.phase !== 'PLAYER_INPUT') return;
@@ -77,15 +130,8 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     dispatch({ type: 'SELECT_TARGET_NODE', nodeId });
   };
 
-  const canBurn = !currentPlayer.isBot && gameState.selectedCardId && gameState.possibleMoves.length === 0;
-
-  const getNoMoveHint = () => {
-    const playerMarbles = gameState.marbles; 
-    const myMarbles = currentPlayer.marbles.map(id => playerMarbles[id]);
-    const allInBase = myMarbles.every(m => m.position === 'BASE');
-    if (allInBase) return "Need an Ace or King to exit Base.";
-    return "Blocked or no valid targets.";
-  };
+  // Get selected card rank for notification
+  const selectedCard = currentPlayer.hand.find(c => c.id === gameState.selectedCardId);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden relative selection:bg-amber-500/30">
@@ -163,27 +209,12 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
             )}
           </AnimatePresence>
 
-          <AnimatePresence>
-            {canBurn && gameState.phase === 'PLAYER_INPUT' && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-4 w-64"
-              >
-                <div className="bg-black/90 backdrop-blur px-6 py-4 rounded-xl border border-red-500/50 text-center shadow-2xl">
-                  <div className="text-red-400 font-bold text-lg mb-1">No Valid Moves</div>
-                  <div className="text-slate-300 text-xs">{getNoMoveHint()}</div>
-                </div>
-                <button
-                  onClick={() => dispatch({ type: 'BURN_CARD' })}
-                  className="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold py-3 px-8 rounded-full shadow-[0_0_25px_rgba(220,38,38,0.6)] animate-pulse border border-red-400/30"
-                >
-                  BURN CARD 🔥
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* New Burn Notification replaces the old modal */}
+          <BurnNotification 
+            isVisible={isDeadlocked}
+            cardRank={selectedCard?.rank}
+            onBurn={() => dispatch({ type: 'BURN_CARD' })}
+          />
         </div>
       </div>
 
@@ -192,9 +223,9 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
         <CardHand 
           player={currentPlayer} 
           selectedCardId={gameState.selectedCardId}
-          onCardSelect={(id) => {
-            if (!currentPlayer.isBot) dispatch({ type: 'SELECT_CARD', cardId: id });
-          }}
+          shakingCardId={shakingCardId}
+          isDeadlocked={isDeadlocked}
+          onCardSelect={handleCardSelect}
         />
       </div>
     </div>
