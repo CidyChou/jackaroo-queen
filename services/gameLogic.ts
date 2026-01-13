@@ -104,8 +104,13 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
     case 'SELECT_CARD': {
       // FIX: Allow selection during OPPONENT_DISCARD phase
-      const allowedPhases = ['TURN_START', 'PLAYER_INPUT', 'OPPONENT_DISCARD'];
+      const allowedPhases = ['TURN_START', 'PLAYER_INPUT', 'OPPONENT_DISCARD', 'HANDLING_SPLIT_7'];
       if (!allowedPhases.includes(state.phase)) return state;
+
+      // FIX: Block card switching/resetting if in the middle of a Split 7 move
+      if (state.phase === 'HANDLING_SPLIT_7' && state.split7State?.firstMoveUsed !== null) {
+          return state;
+      }
 
       const player = state.players[state.currentPlayerIndex];
       const card = player.hand.find(c => c.id === action.cardId);
@@ -146,6 +151,11 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
       // --- INTERCEPTION FOR CARD 7 (HUMAN ONLY) ---
       if (card.rank === '7' && !player.isBot) {
+         // Fix: If already handling this card, do not reset state
+         if (state.phase === 'HANDLING_SPLIT_7' && state.selectedCardId === action.cardId) {
+             return state;
+         }
+
          return {
            ...state,
            phase: 'HANDLING_SPLIT_7',
@@ -345,21 +355,28 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
                // Calculate moves for remaining steps immediately
                const nextMoves = calculateValidMoves(nextState, player, card, null, remaining);
                
-               return {
-                  ...nextState,
-                  players: state.players, // Don't update players (hand) yet, only board updated
-                  split7State: {
-                     firstMoveUsed: stepsTaken,
-                     firstMarbleId: move.marbleId || null,
-                     remainingSteps: remaining
-                  },
-                  possibleMoves: nextMoves,
-                  selectedMarbleId: null,
-                  lastActionLog: [...state.lastActionLog, `${player.color} moved ${stepsTaken} steps with 7. Steps left: ${remaining}`]
-               };
+               if (nextMoves.length === 0) {
+                   // No valid moves for the remaining steps. 
+                   // We must end the turn, forfeiting the remaining steps? 
+                   // Or just proceed to standard end turn logic (which commits this first move state).
+                   // Yes, fall through to below.
+               } else {
+                   return {
+                      ...nextState,
+                      players: state.players, // Don't update players (hand) yet, only board updated
+                      split7State: {
+                         firstMoveUsed: stepsTaken,
+                         firstMarbleId: move.marbleId || null,
+                         remainingSteps: remaining
+                      },
+                      possibleMoves: nextMoves,
+                      selectedMarbleId: null,
+                      lastActionLog: [...state.lastActionLog, `${player.color} moved ${stepsTaken} steps with 7. Steps left: ${remaining}`]
+                   };
+               }
             }
          }
-         // If we are here, either remaining was 0, or it was the second move.
+         // If we are here, either remaining was 0, or it was the second move (or no valid second move).
          // Proceed to standard turn resolution logic below.
       }
 
@@ -530,6 +547,11 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           selectedCardId: null,
           possibleMoves: [] 
         };
+      }
+
+      // FIX: Block canceling if in the middle of a split move (Leg 2)
+      if (state.phase === 'HANDLING_SPLIT_7' && state.split7State?.firstMoveUsed !== null) {
+          return state;
       }
 
       return {
