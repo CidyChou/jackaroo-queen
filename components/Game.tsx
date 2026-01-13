@@ -5,8 +5,9 @@ import { calculateValidMoves } from '../services/moveEngine';
 import { Board } from './Board';
 import { CardHand } from './CardHand';
 import { BurnNotification } from './BurnNotification';
-import { BurnZone } from './BurnZone'; // Import BurnZone
-import { ActionChoiceModal } from './ActionChoiceModal'; // Import Modal
+import { BurnZone } from './BurnZone'; 
+import { ActionChoiceModal } from './ActionChoiceModal'; 
+import { SplitSevenControls } from './SplitSevenControls'; // Import
 import { AnimatePresence, motion } from 'framer-motion';
 import { getBestMove } from '../services/BotLogic';
 
@@ -29,11 +30,9 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   // --- Logic: Detect Deadlock (Scenario B) ---
   const isDeadlocked = useMemo(() => {
     if (currentPlayer.isBot) return false;
-    // Don't flag deadlocks if we are in the middle of a specific decision
     if (gameState.phase !== 'PLAYER_INPUT' && gameState.phase !== 'TURN_START' && gameState.phase !== 'OPPONENT_DISCARD') return false;
     
-    // If being attacked, you MUST burn, so not deadlocked in the traditional sense
-    if (gameState.phase === 'OPPONENT_DISCARD') return true; // Reusing deadlock UI for "Must Burn" state
+    if (gameState.phase === 'OPPONENT_DISCARD') return true; 
 
     const hasAnyMove = currentPlayer.hand.some(card => {
        const moves = calculateValidMoves(gameState, currentPlayer, card, null);
@@ -50,6 +49,18 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     gameState.currentPlayerIndex 
   ]);
 
+  // --- Logic: Check if "Move 10" is actually possible (for the Modal) ---
+  const canPlayMove10 = useMemo(() => {
+     if (gameState.phase !== 'DECIDING_10') return false;
+     if (currentPlayer.isBot) return false;
+     
+     const card = currentPlayer.hand.find(c => c.id === gameState.selectedCardId);
+     if (!card) return false;
+
+     const moves = calculateValidMoves(gameState, currentPlayer, card, null);
+     return moves.some(m => m.type !== 'force_discard');
+  }, [gameState, currentPlayer]);
+
   // --- Bot Turn Logic ---
   useEffect(() => {
     if (!currentPlayer.isBot) return;
@@ -63,7 +74,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
           await new Promise(r => setTimeout(r, 1500));
           if (isCancelled) return;
           
-          // Bot randomly picks a card to burn
           if (currentPlayer.hand.length > 0) {
              const randomCard = currentPlayer.hand[Math.floor(Math.random() * currentPlayer.hand.length)];
              dispatch({ type: 'SELECT_CARD', cardId: randomCard.id });
@@ -71,7 +81,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
              dispatch({ type: 'BURN_CARD' });
              setToastMessage("Turn Returned!");
           } else {
-             // Empty hand, just resolve
              dispatch({ type: 'BURN_CARD' }); 
           }
           return;
@@ -95,10 +104,8 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
           await new Promise(r => setTimeout(r, 600)); 
           
           if (decision.move.type === 'force_discard') {
-             // Bot chose attack
-             dispatch({ type: 'CONFIRM_MOVE' }); // This triggers the attack phase in reducer
+             dispatch({ type: 'CONFIRM_MOVE' }); 
           } else {
-             // Standard move
              dispatch({ type: 'SELECT_MARBLE', marbleId: decision.move.marbleId! });
              
              if (decision.move.targetPosition) {
@@ -130,27 +137,25 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   const handleCardSelect = (cardId: string) => {
     if (currentPlayer.isBot) return;
 
-    // Toggle Selection
     if (gameState.selectedCardId === cardId) {
       dispatch({ type: 'CANCEL_SELECTION' });
       return;
     }
 
-    // 1. If Deadlocked OR Attacked, we are selecting a card to BURN.
     if (isDeadlocked || gameState.phase === 'OPPONENT_DISCARD') {
       dispatch({ type: 'SELECT_CARD', cardId });
       return;
     }
 
-    // 2. If Normal Play
     const card = currentPlayer.hand.find(c => c.id === cardId);
     if (!card) return;
 
-    // Note: If card is 10, Reducer will set phase to DECIDING_10
+    const isSpecialCard = 
+        card.rank === '10' || 
+        card.rank === '7' ||
+        (card.rank === 'Q' && (card.suit === 'hearts' || card.suit === 'diamonds'));
     
-    // Check validity for non-10 cards purely for shaking effect
-    // For 10, we let it select regardless
-    if (card.rank !== '10') {
+    if (!isSpecialCard) {
         const moves = calculateValidMoves(gameState, currentPlayer, card, null);
         if (moves.length === 0) {
             setShakingCardId(cardId);
@@ -159,7 +164,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
             dispatch({ type: 'SELECT_CARD', cardId });
         }
     } else {
-        // Always select 10 to trigger modal
         dispatch({ type: 'SELECT_CARD', cardId });
     }
   };
@@ -173,13 +177,30 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
 
   const handleMarbleClick = (marbleId: string) => {
     if (currentPlayer.isBot) return; 
-    if (gameState.phase !== 'PLAYER_INPUT') return;
+    
+    if (gameState.selectedCardId && gameState.selectedMarbleId) {
+        const targetMarble = gameState.marbles[marbleId];
+        
+        const validMove = gameState.possibleMoves.find(m => 
+           m.targetPosition === targetMarble.position ||
+           m.swapTargetMarbleId === marbleId
+        );
+
+        if (validMove) {
+           if (validMove.targetPosition) {
+             dispatch({ type: 'SELECT_TARGET_NODE', nodeId: validMove.targetPosition });
+             return;
+           }
+        }
+    }
+
+    if (gameState.phase !== 'PLAYER_INPUT' && gameState.phase !== 'HANDLING_SPLIT_7') return;
     dispatch({ type: 'SELECT_MARBLE', marbleId });
   };
 
   const handleNodeClick = (nodeId: string) => {
     if (currentPlayer.isBot) return; 
-    if (gameState.phase !== 'PLAYER_INPUT') return;
+    if (gameState.phase !== 'PLAYER_INPUT' && gameState.phase !== 'HANDLING_SPLIT_7') return;
     dispatch({ type: 'SELECT_TARGET_NODE', nodeId });
   };
 
@@ -190,7 +211,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
       
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black z-0 pointer-events-none"></div>
 
-      {/* Burn Zone */}
       <BurnZone 
         isVisible={isDraggingCard} 
         isHovered={isHoveringBurn} 
@@ -202,14 +222,34 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
         }}
       />
       
-      {/* 10 Decision Modal */}
       <ActionChoiceModal 
-        isVisible={gameState.phase === 'DECIDING_10' && !currentPlayer.isBot}
-        onOptionMove={() => dispatch({ type: 'RESOLVE_10_DECISION', choice: 'MOVE' })}
-        onOptionAttack={() => dispatch({ type: 'RESOLVE_10_DECISION', choice: 'ATTACK' })}
+        isVisible={(gameState.phase === 'DECIDING_10' || gameState.phase === 'DECIDING_RED_Q') && !currentPlayer.isBot}
+        variant={gameState.phase === 'DECIDING_RED_Q' ? 'RED_Q' : 'TEN'}
+        onOptionMove={
+            (canPlayMove10) 
+            ? () => dispatch({ type: 'RESOLVE_10_DECISION', choice: 'MOVE' }) 
+            : undefined
+        }
+        onOptionAttack={() => {
+           if (gameState.phase === 'DECIDING_RED_Q') {
+              dispatch({ type: 'RESOLVE_RED_Q_DECISION', choice: 'ATTACK' });
+           } else {
+              dispatch({ type: 'RESOLVE_10_DECISION', choice: 'ATTACK' });
+           }
+        }}
+        onCancel={() => dispatch({ type: 'RESOLVE_RED_Q_DECISION', choice: 'CANCEL' })}
       />
 
-      {/* Attack Banner (When waiting for opponent or when being attacked) */}
+      {/* NEW: 7 Split Controls */}
+      <AnimatePresence>
+        {gameState.phase === 'HANDLING_SPLIT_7' && !currentPlayer.isBot && (
+          <SplitSevenControls 
+             gameState={gameState}
+             onSelectSteps={(steps) => dispatch({ type: 'SELECT_STEP_COUNT', steps })}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {gameState.phase === 'OPPONENT_DISCARD' && (
            <motion.div
@@ -227,7 +267,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
         )}
       </AnimatePresence>
 
-      {/* Header / HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
         <div className="pointer-events-auto">
           <button 
@@ -257,25 +296,8 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
              </div>
           </div>
         </div>
-        
-        {/* Game Log */}
-        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-700 w-72 pointer-events-auto max-h-48 overflow-auto shadow-2xl backdrop-blur-sm hidden sm:block">
-           <h3 className="text-xs uppercase text-slate-500 font-bold mb-2 tracking-widest border-b border-white/10 pb-1">Battle Log</h3>
-           <div className="flex flex-col-reverse gap-1">
-             {gameState.lastActionLog.map((log, i) => (
-               <motion.div 
-                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} 
-                 key={gameState.lastActionLog.length - 1 - i} 
-                 className="text-xs text-slate-300 py-1"
-               >
-                 <span className="text-amber-500 mr-2">➤</span> {log}
-               </motion.div>
-             ))}
-           </div>
-        </div>
       </div>
 
-      {/* Main Game Area */}
       <div className="flex-1 flex items-center justify-center p-4 lg:p-10 relative z-0">
         <div className="relative w-full max-w-[650px] aspect-square">
           <Board 
@@ -296,17 +318,15 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
                </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Burn Notification for deadlock or attack */}
-          <BurnNotification 
-            isVisible={(isDeadlocked || gameState.phase === 'OPPONENT_DISCARD') && !isDraggingCard}
-            cardRank={selectedCard?.rank}
-            onBurn={() => dispatch({ type: 'BURN_CARD' })}
-          />
         </div>
       </div>
+      
+      <BurnNotification 
+        isVisible={(isDeadlocked || gameState.phase === 'OPPONENT_DISCARD') && !isDraggingCard}
+        cardRank={selectedCard?.rank}
+        onBurn={() => dispatch({ type: 'BURN_CARD' })}
+      />
 
-      {/* Footer / Hand */}
       <div className={`transition-opacity duration-500 ${currentPlayer.isBot ? 'opacity-50 pointer-events-none grayscale' : 'opacity-100'}`}>
         <CardHand 
           player={currentPlayer} 
@@ -314,7 +334,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
           shakingCardId={shakingCardId}
           isDeadlocked={isDeadlocked || gameState.phase === 'OPPONENT_DISCARD'}
           onCardSelect={handleCardSelect}
-          // Drag Props
           onDragStart={() => {
             setIsDraggingCard(true);
             if (gameState.selectedCardId) {

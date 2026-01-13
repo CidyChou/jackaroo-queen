@@ -68,6 +68,7 @@ export type GamePhase =
   | 'TURN_START' // Draw cards if needed, check can play
   | 'PLAYER_INPUT' // Waiting for user to select card or marble
   | 'DECIDING_10' // User clicked 10, needs to choose Move or Attack
+  | 'DECIDING_RED_Q' // User clicked Red Q, needs to confirm Attack
   | 'HANDLING_SPLIT_7' // Special state for 7: choosing 2nd marble/steps
   | 'HANDLING_JACK_SWAP' // Special state for Jack: choosing target
   | 'OPPONENT_DISCARD' // Waiting for victim to discard
@@ -95,6 +96,7 @@ export interface GameState {
   
   // Logic for Attack Return
   pendingAttackerIndex: number | null; // Stores who played the 10 so turn can return to them
+  repeatTurn: boolean; // Flag to indicate if the current player gets an extra turn (e.g. after Kill)
 
   // Complex Move Context
   split7State: {
@@ -111,6 +113,8 @@ export type GameAction =
   | { type: 'START_GAME' }
   | { type: 'SELECT_CARD'; cardId: string }
   | { type: 'RESOLVE_10_DECISION'; choice: 'MOVE' | 'ATTACK' }
+  | { type: 'RESOLVE_RED_Q_DECISION'; choice: 'ATTACK' | 'CANCEL' }
+  | { type: 'SELECT_STEP_COUNT'; steps: number }
   | { type: 'DESELECT_CARD' }
   | { type: 'SELECT_MARBLE'; marbleId: string }
   | { type: 'SELECT_TARGET_NODE'; nodeId: string } 

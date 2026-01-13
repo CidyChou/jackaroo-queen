@@ -25,6 +25,12 @@ export const traversePath = (
 
   for (let i = 0; i < steps; i++) {
     const currentNode = board[currentNodeId];
+    
+    // Safety check: if node doesn't exist (e.g. invalid id or 'BASE' passed by mistake), abort
+    if (!currentNode) {
+      return { path: [], destination: null, destinationNode: null };
+    }
+
     let nextNodeId: string | null = null;
 
     if (isBackward) {
@@ -61,7 +67,8 @@ export const calculateValidMoves = (
   gameState: GameState,
   player: Player,
   card: Card,
-  selectedMarbleId?: string | null
+  selectedMarbleId?: string | null,
+  stepsOverride?: number // NEW: Allow forcing step count (for Card 7)
 ): MoveCandidate[] => {
   const moves: MoveCandidate[] = [];
   
@@ -92,35 +99,39 @@ export const calculateValidMoves = (
 
   candidateMarbles.forEach(marble => {
     // --- 2. BASE EXIT Logic (A, 2, K) ---
+    // Modified: Ensure we don't fall through to standard moves if in BASE
     if (marble.position === 'BASE') {
-      // Must be own marble to exit base (cannot pull opponent out)
-      if (marble.ownerId !== player.id) return;
-
-      const canExit = card.rank === 'A' || card.rank === 'K' || card.rank === '2';
-      
-      if (canExit) {
-        const startNodeId = `node_${START_POSITIONS[player.color]}`;
-        const occupant = Object.values(gameState.marbles).find(m => m.position === startNodeId);
-        
-        // Cannot exit if own marble is there
-        if (occupant && occupant.ownerId === player.id) return;
-
-        moves.push({
-          type: 'base_exit',
-          cardId: card.id,
-          marbleId: marble.id,
-          targetPosition: startNodeId,
-          killedMarbleIds: occupant && occupant.ownerId !== player.id ? [occupant.id] : [],
-          isValid: true
-        });
+      if (!stepsOverride) {
+        // Must be own marble to exit base (cannot pull opponent out)
+        if (marble.ownerId === player.id) {
+            const canExit = card.rank === 'A' || card.rank === 'K' || card.rank === '2';
+            
+            if (canExit) {
+              const startNodeId = `node_${START_POSITIONS[player.color]}`;
+              const occupant = Object.values(gameState.marbles).find(m => m.position === startNodeId);
+              
+              // Cannot exit if own marble is there
+              if (!(occupant && occupant.ownerId === player.id)) {
+                  moves.push({
+                    type: 'base_exit',
+                    cardId: card.id,
+                    marbleId: marble.id,
+                    targetPosition: startNodeId,
+                    killedMarbleIds: occupant && occupant.ownerId !== player.id ? [occupant.id] : [],
+                    isValid: true,
+                    stepsUsed: 0
+                  });
+              }
+            }
+        }
       }
-      return; // Cannot do other moves from Base
+      return; // Cannot do other moves from Base (Card 7 or others)
     }
 
     if (marble.position === 'HOME') return; 
 
     // --- 3. SWAP Logic (Black J) ---
-    if (card.rank === 'J' && isBlack(card.suit)) {
+    if (card.rank === 'J' && isBlack(card.suit) && !stepsOverride) {
        // Only own marbles can initiate swap? usually yes.
        if (marble.ownerId !== player.id) return;
 
@@ -138,7 +149,8 @@ export const calculateValidMoves = (
           marbleId: marble.id,
           swapTargetMarbleId: target.id,
           targetPosition: target.position as string,
-          isValid: true
+          isValid: true,
+          stepsUsed: 0
         });
        });
        return; 
@@ -157,7 +169,10 @@ export const calculateValidMoves = (
       case '4': steps = 4; isBackward = true; break;
       case '5': steps = 5; break; // Moves any (handled by candidate selection)
       case '6': steps = 6; break;
-      case '7': return; // Split logic handled in separate state, returns empty here if raw check
+      case '7': 
+         if (stepsOverride) steps = stepsOverride;
+         else steps = 7; // Default for bot or fallback
+         break;
       case '8': steps = 8; break;
       case '9': steps = 9; break;
       case '10': steps = 10; break; // Also Force Discard (handled above)
@@ -206,7 +221,8 @@ export const calculateValidMoves = (
          marbleId: marble.id,
          targetPosition: result.destination,
          killedMarbleIds: kills,
-         isValid: true
+         isValid: true,
+         stepsUsed: steps
        });
     }
   });

@@ -13,10 +13,11 @@ export const BurnNotification: React.FC<BurnNotificationProps> = ({ cardRank, on
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          initial={{ y: 50, opacity: 0, scale: 0.9 }}
-          animate={{ y: 0, opacity: 1, scale: 1 }}
-          exit={{ y: 20, opacity: 0, scale: 0.95 }}
-          className={`absolute bottom-40 left-1/2 -translate-x-1/2 z-40 flex items-center gap-4 backdrop-blur-md border pl-5 pr-2 py-2 rounded-full shadow-2xl transition-colors duration-300
+          initial={{ y: 20, opacity: 0, scale: 0.9, x: "-50%" }}
+          animate={{ y: 0, opacity: 1, scale: 1, x: "-50%" }}
+          exit={{ y: 20, opacity: 0, scale: 0.9, x: "-50%" }}
+          // Removed -translate-x-1/2 class as framer motion handles x: "-50%"
+          className={`fixed bottom-40 left-1/2 z-[60] flex items-center gap-4 backdrop-blur-md border pl-5 pr-2 py-2 rounded-full shadow-2xl transition-colors duration-300 pointer-events-auto
             ${cardRank 
               ? 'bg-red-900/90 border-red-500/50 shadow-red-900/50' 
               : 'bg-slate-900/80 border-slate-700/50 shadow-black/50'
@@ -27,11 +28,11 @@ export const BurnNotification: React.FC<BurnNotificationProps> = ({ cardRank, on
             <span className={`text-xl ${!cardRank ? 'animate-pulse grayscale' : ''}`}>🔥</span>
             <div className="flex flex-col">
               <span className={`font-bold text-sm whitespace-nowrap ${cardRank ? 'text-white' : 'text-slate-300'}`}>
-                {cardRank ? `Discard ${cardRank}?` : "No Moves Available"}
+                {cardRank ? `Discard ${cardRank}?` : "Select card to discard 🔥"}
               </span>
               {!cardRank && (
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                  Select a card to discard
+                  Action Required
                 </span>
               )}
             </div>

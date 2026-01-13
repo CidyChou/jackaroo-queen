@@ -90,6 +90,7 @@ export const createInitialState = (playerCount: number = 2): GameState => {
     selectedMarbleId: null,
     possibleMoves: [],
     pendingAttackerIndex: null,
+    repeatTurn: false,
     split7State: null,
     lastActionLog: ['Welcome to Jackaroo 1v1!', 'Attack Enabled!']
   };
@@ -102,10 +103,23 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
 
     case 'SELECT_CARD': {
-      if (state.phase !== 'TURN_START' && state.phase !== 'PLAYER_INPUT') return state;
+      // FIX: Allow selection during OPPONENT_DISCARD phase
+      const allowedPhases = ['TURN_START', 'PLAYER_INPUT', 'OPPONENT_DISCARD'];
+      if (!allowedPhases.includes(state.phase)) return state;
+
       const player = state.players[state.currentPlayerIndex];
       const card = player.hand.find(c => c.id === action.cardId);
       if (!card) return state;
+
+      // --- HANDLING FOR OPPONENT_DISCARD PHASE ---
+      if (state.phase === 'OPPONENT_DISCARD') {
+         return {
+            ...state,
+            selectedCardId: action.cardId,
+            selectedMarbleId: null,
+            possibleMoves: [] 
+         };
+      }
 
       // --- INTERCEPTION FOR CARD 10 (HUMAN ONLY) ---
       if (card.rank === '10' && !player.isBot) {
@@ -114,8 +128,36 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           phase: 'DECIDING_10',
           selectedCardId: action.cardId,
           selectedMarbleId: null,
-          possibleMoves: [] // Don't show moves yet
+          possibleMoves: [] 
         };
+      }
+
+      // --- INTERCEPTION FOR RED QUEEN (HUMAN ONLY) ---
+      const isRedQ = card.rank === 'Q' && (card.suit === 'hearts' || card.suit === 'diamonds');
+      if (isRedQ && !player.isBot) {
+        return {
+          ...state,
+          phase: 'DECIDING_RED_Q',
+          selectedCardId: action.cardId,
+          selectedMarbleId: null,
+          possibleMoves: [] 
+        };
+      }
+
+      // --- INTERCEPTION FOR CARD 7 (HUMAN ONLY) ---
+      if (card.rank === '7' && !player.isBot) {
+         return {
+           ...state,
+           phase: 'HANDLING_SPLIT_7',
+           selectedCardId: action.cardId,
+           selectedMarbleId: null,
+           possibleMoves: [], // No moves until steps selected
+           split7State: {
+             firstMoveUsed: null,
+             firstMarbleId: null,
+             remainingSteps: 7
+           }
+         };
       }
 
       const moves = calculateValidMoves(state, player, card, null);
@@ -130,6 +172,22 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       };
     }
 
+    case 'SELECT_STEP_COUNT': {
+      if (state.phase !== 'HANDLING_SPLIT_7') return state;
+      const player = state.players[state.currentPlayerIndex];
+      const card = player.hand.find(c => c.id === state.selectedCardId);
+      if (!card) return state;
+
+      // Calculate moves for the specific step count
+      const moves = calculateValidMoves(state, player, card, null, action.steps);
+
+      return {
+        ...state,
+        possibleMoves: moves,
+        selectedMarbleId: null
+      };
+    }
+
     case 'RESOLVE_10_DECISION': {
       if (state.phase !== 'DECIDING_10') return state;
       const player = state.players[state.currentPlayerIndex];
@@ -137,9 +195,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       if (!card) return state;
 
       if (action.choice === 'MOVE') {
-        // Option 1: Treat as standard move (calculate 10 steps)
         const moves = calculateValidMoves(state, player, card, null);
-        // Filter out any 'force_discard' options if they exist, keep only movement
         const standardMoves = moves.filter(m => m.type !== 'force_discard');
 
         return {
@@ -148,14 +204,11 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           possibleMoves: standardMoves
         };
       } else {
-        // Option 2: ATTACK (Force Discard)
-        // 1. Burn the 10 immediately
         const newHand = player.hand.filter(c => c.id !== card.id);
         const newDiscard = [...state.discardPile, card];
         const newPlayers = [...state.players];
         newPlayers[state.currentPlayerIndex] = { ...player, hand: newHand };
 
-        // 2. Set context to return
         const attackerIdx = state.currentPlayerIndex;
         const victimIdx = (attackerIdx + 1) % state.players.length;
 
@@ -173,15 +226,64 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       }
     }
 
+    case 'RESOLVE_RED_Q_DECISION': {
+      if (state.phase !== 'DECIDING_RED_Q') return state;
+      const player = state.players[state.currentPlayerIndex];
+      const card = player.hand.find(c => c.id === state.selectedCardId);
+      if (!card) return state;
+
+      if (action.choice === 'CANCEL') {
+        return {
+          ...state,
+          phase: 'TURN_START',
+          selectedCardId: null,
+          possibleMoves: []
+        };
+      }
+
+      // CHOICE: ATTACK
+      const newHand = player.hand.filter(c => c.id !== card.id);
+      const newDiscard = [...state.discardPile, card];
+      const newPlayers = [...state.players];
+      newPlayers[state.currentPlayerIndex] = { ...player, hand: newHand };
+
+      const attackerIdx = state.currentPlayerIndex;
+      const victimIdx = (attackerIdx + 1) % state.players.length;
+
+      return {
+        ...state,
+        players: newPlayers,
+        discardPile: newDiscard,
+        currentPlayerIndex: victimIdx,
+        pendingAttackerIndex: attackerIdx,
+        phase: 'OPPONENT_DISCARD',
+        selectedCardId: null,
+        possibleMoves: [],
+        lastActionLog: [...state.lastActionLog, `${player.color} played Red Q: ATTACK!`]
+      };
+    }
+
     case 'SELECT_MARBLE': {
-      if (state.phase !== 'PLAYER_INPUT') return state;
+      if (state.phase !== 'PLAYER_INPUT' && state.phase !== 'HANDLING_SPLIT_7') return state;
       if (!state.selectedCardId) return state;
 
       const player = state.players[state.currentPlayerIndex];
       const card = player.hand.find(c => c.id === state.selectedCardId);
       if (!card) return state;
       
-      const moves = calculateValidMoves(state, player, card, action.marbleId);
+      // If we are in Split 7 phase, we use the possibleMoves already filtered by Step selection
+      // But we still might need to calculate valid moves if user clicked marble BEFORE filtering?
+      // No, UI enforces step selection first for 7.
+      // EXCEPT: If we are in the second stage of split 7, moves are already calculated.
+      
+      // If NOT split 7, calculate as usual
+      let moves = state.possibleMoves;
+      if (state.phase !== 'HANDLING_SPLIT_7') {
+         moves = calculateValidMoves(state, player, card, action.marbleId);
+      } else {
+         // Filter already calculated moves for this marble
+         moves = state.possibleMoves.filter(m => m.marbleId === action.marbleId);
+      }
 
       return {
         ...state,
@@ -195,9 +297,8 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const move = state.possibleMoves[0];
       if (!move) return state;
 
-      // Special Handling for Force Discard (From Bot or Red Q)
+      // Special Handling for Force Discard (From Bot)
       if (move.type === 'force_discard') {
-         // Reusing the RESOLVE_10_DECISION 'ATTACK' logic mostly, but specific for non-10 triggers
          const attacker = state.players[state.currentPlayerIndex];
          const card = attacker.hand.find(c => c.id === state.selectedCardId);
          if (!card) return state;
@@ -210,14 +311,13 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
          const attackerIdx = state.currentPlayerIndex;
          const victimIdx = (attackerIdx + 1) % state.players.length;
          
-         // If Victim is bot, we might want to auto-resolve here, but let's stick to the Phase pattern for consistency
          return {
             ...state,
             players: newPlayers,
             discardPile: newDiscard,
             currentPlayerIndex: victimIdx,
             pendingAttackerIndex: attackerIdx,
-            phase: 'OPPONENT_DISCARD', // Enter waiting state
+            phase: 'OPPONENT_DISCARD', 
             selectedCardId: null,
             possibleMoves: [],
             lastActionLog: [...state.lastActionLog, `${attacker.color} used ${card.rank}: ATTACK!`]
@@ -229,6 +329,40 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const player = state.players[state.currentPlayerIndex];
       const card = player.hand.find(c => c.id === state.selectedCardId);
 
+      // --- HANDLE SPLIT 7 Logic ---
+      if (state.phase === 'HANDLING_SPLIT_7' && card?.rank === '7') {
+         const stepsTaken = move.stepsUsed || 7;
+         const currentSplit = state.split7State || { firstMoveUsed: null, firstMarbleId: null, remainingSteps: 7 };
+         
+         if (currentSplit.firstMoveUsed === null) {
+            // First leg done
+            const remaining = 7 - stepsTaken;
+            
+            if (remaining === 0) {
+               // Full 7 used at once, proceed to end turn
+            } else {
+               // Need second move
+               // Calculate moves for remaining steps immediately
+               const nextMoves = calculateValidMoves(nextState, player, card, null, remaining);
+               
+               return {
+                  ...nextState,
+                  players: state.players, // Don't update players (hand) yet, only board updated
+                  split7State: {
+                     firstMoveUsed: stepsTaken,
+                     firstMarbleId: move.marbleId || null,
+                     remainingSteps: remaining
+                  },
+                  possibleMoves: nextMoves,
+                  selectedMarbleId: null,
+                  lastActionLog: [...state.lastActionLog, `${player.color} moved ${stepsTaken} steps with 7. Steps left: ${remaining}`]
+               };
+            }
+         }
+         // If we are here, either remaining was 0, or it was the second move.
+         // Proceed to standard turn resolution logic below.
+      }
+
       let logMsg = `${player.isBot ? 'CPU' : 'Player'} (${player.color}) played ${card?.rank}`;
       if (events.killedOpponent) logMsg += ' - KILL! (+1 Card)';
       if (events.enteredHome) logMsg += ' - SCORED! (+1 Card)';
@@ -237,11 +371,15 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       let updatedPlayers = [...nextState.players];
       let currentDeck = [...nextState.deck];
       let currentPlayerHand = [...player.hand];
+      let shouldRepeat = false;
 
       if (events.killedOpponent || events.enteredHome) {
          if (currentDeck.length > 0) {
             const bonusCard = currentDeck.pop();
-            if (bonusCard) currentPlayerHand.push(bonusCard);
+            if (bonusCard) {
+                currentPlayerHand.push(bonusCard);
+                shouldRepeat = true;
+            }
          }
       }
 
@@ -253,6 +391,8 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         deck: currentDeck,
         possibleMoves: [],
         phase: 'RESOLVING_MOVE',
+        repeatTurn: shouldRepeat,
+        split7State: null, // clear split state
         lastActionLog: [...state.lastActionLog, logMsg]
       };
     }
@@ -260,13 +400,12 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     case 'BURN_CARD': {
        const player = state.players[state.currentPlayerIndex];
        
-       // --- SPECIAL LOGIC: VICTIM BURNING UNDER ATTACK ---
        if (state.phase === 'OPPONENT_DISCARD') {
-          if (!state.selectedCardId && player.hand.length > 0) return state; // Must select
+          if (!state.selectedCardId && player.hand.length > 0) return state;
 
           let burnedCardName = "Last Card";
           let newHand = [...player.hand];
-          let cardToBurn = state.discardPile; // temp ref
+          let cardToBurn = state.discardPile; 
 
           if (player.hand.length > 0) {
               const c = player.hand.find(x => x.id === state.selectedCardId);
@@ -280,7 +419,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           const newPlayers = [...state.players];
           newPlayers[state.currentPlayerIndex] = { ...player, hand: newHand };
           
-          // RETURN TURN TO ATTACKER
           const nextPlayerIdx = state.pendingAttackerIndex !== null ? state.pendingAttackerIndex : state.currentPlayerIndex;
 
           return {
@@ -288,14 +426,13 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
               players: newPlayers,
               discardPile: cardToBurn,
               currentPlayerIndex: nextPlayerIdx,
-              pendingAttackerIndex: null, // Reset
-              phase: 'TURN_START', // Attacker starts turn again
+              pendingAttackerIndex: null,
+              phase: 'TURN_START',
               selectedCardId: null,
               lastActionLog: [...state.lastActionLog, `${player.color} discarded ${burnedCardName}.`, `Turn returns to Attacker!`]
           };
        }
 
-       // Normal Burn
        if (!state.selectedCardId) return state;
        const card = player.hand.find(c => c.id === state.selectedCardId);
        const logMsg = `${player.isBot ? 'CPU' : 'Player'} burned ${card?.rank}`;
@@ -313,7 +450,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const currentPlayer = state.players[currentPlayerIndex];
       const playedCardId = state.selectedCardId;
       
-      // Remove played card if not already removed (Attack removes it earlier)
       let newPlayers = [...state.players];
       let newDiscardPile = [...state.discardPile];
 
@@ -324,27 +460,19 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         if (cardToDiscard) newDiscardPile.push(cardToDiscard);
       }
 
-      // Check Asymmetric Round End
-      // Round ends only when ALL players have 0 cards
       const allHandsEmpty = newPlayers.every(p => p.hand.length === 0);
       
       if (allHandsEmpty) {
-        // --- NEW ROUND DEALING LOGIC (4-4-5) ---
         let deck = [...state.deck];
         let discard = [...newDiscardPile];
         
         const nextRound = state.currentRound + 1;
         
-        // Reshuffle after round 3 (End of 4-4-5 cycle) or if deck empty
         if ((state.currentRound % 3 === 0) || deck.length < newPlayers.length * 5) {
            deck = [...deck, ...discard].sort(() => Math.random() - 0.5);
            discard = [];
         }
 
-        // Determine Cards to Deal (4-4-5 Pattern)
-        // Round 1 (done), Round 2=4, Round 3=5, Round 4=4...
-        // Pattern Index: (RoundNumber - 1) % 3
-        // R1(0)=4, R2(1)=4, R3(2)=5
         const cardsToDeal = (nextRound - 1) % 3 === 2 ? 5 : 4;
 
         const nextRoundPlayers = newPlayers.map(p => ({
@@ -352,8 +480,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           hand: deck.splice(0, cardsToDeal)
         }));
 
-        // Rotate starting player for fair advantage
-        const nextStartPlayerIndex = (state.currentRound) % state.players.length; 
+        const nextStartPlayerIndex = (currentPlayerIndex + 1) % state.players.length; 
 
         return {
           ...state,
@@ -366,18 +493,21 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           selectedMarbleId: null,
           possibleMoves: [],
           phase: 'TURN_START',
+          repeatTurn: false,
           lastActionLog: [...state.lastActionLog, `Round ${nextRound} - Deal ${cardsToDeal}`]
         };
       }
 
-      // --- NEXT TURN LOGIC ---
-      // Skip players who have no cards (Asymmetric play)
-      let nextIndex = (currentPlayerIndex + 1) % state.players.length;
-      let loopCount = 0;
+      let nextIndex = currentPlayerIndex;
       
-      while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
-         nextIndex = (nextIndex + 1) % state.players.length;
-         loopCount++;
+      if (!state.repeatTurn) {
+         nextIndex = (currentPlayerIndex + 1) % state.players.length;
+         
+         let loopCount = 0;
+         while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
+            nextIndex = (nextIndex + 1) % state.players.length;
+            loopCount++;
+         }
       }
 
       return {
@@ -388,11 +518,20 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         selectedCardId: null,
         selectedMarbleId: null,
         possibleMoves: [],
-        phase: 'TURN_START'
+        phase: 'TURN_START',
+        repeatTurn: false
       };
     }
 
     case 'CANCEL_SELECTION': {
+      if (state.phase === 'OPPONENT_DISCARD') {
+        return {
+          ...state,
+          selectedCardId: null,
+          possibleMoves: [] 
+        };
+      }
+
       return {
         ...state,
         selectedCardId: null,

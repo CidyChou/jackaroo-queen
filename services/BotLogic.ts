@@ -62,18 +62,24 @@ export const getBestMove = (gameState: GameState, botPlayer: Player): BotDecisio
 const evaluateMove = (move: MoveCandidate, gameState: GameState): number => {
   let score = 0;
 
-  // PRIORITY 1: KILLING OPPONENTS
+  // PRIORITY 1: ATTACKING (Force Discard)
+  // High priority to disrupt opponent
+  if (move.type === 'force_discard') {
+    score += 70;
+  }
+
+  // PRIORITY 2: KILLING OPPONENTS
   if (move.killedMarbleIds && move.killedMarbleIds.length > 0) {
     score += 100 * move.killedMarbleIds.length;
   }
 
-  // PRIORITY 2: EXITING BASE
+  // PRIORITY 3: EXITING BASE
   // Important early game
   if (move.type === 'base_exit') {
     score += 60;
   }
 
-  // PRIORITY 3: ENTERING HOME / FINISHING
+  // PRIORITY 4: ENTERING HOME / FINISHING
   if (move.targetPosition?.includes('home')) {
     const node = gameState.board[move.targetPosition];
     if (node.type === 'home') {
@@ -83,17 +89,11 @@ const evaluateMove = (move: MoveCandidate, gameState: GameState): number => {
     }
   }
 
-  // PRIORITY 4: DISTANCE / ADVANCING
+  // PRIORITY 5: DISTANCE / ADVANCING
   // We want to move forward generally
-  // Simple heuristic: rank value
-  // A bit complex to calculate actual distance on board without more lookups,
-  // but we can look at the card used.
   if (move.type === 'standard') {
     score += 5; // Base value for moving
   }
-
-  // PRIORITY 5: SAFETY (Avoid landing on unsafe spots if possible?)
-  // Too complex for simple bot right now.
 
   return score;
 };

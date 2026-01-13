@@ -35,10 +35,12 @@ export const CardHand: React.FC<CardHandProps> = ({
         pointer-events-auto bg-slate-800/90 px-8 py-4 rounded-t-2xl backdrop-blur-md border-t border-slate-600 shadow-2xl flex flex-col items-center transition-all duration-500
         ${isDeadlocked ? 'ring-4 ring-red-500/50 shadow-[0_0_50px_rgba(239,68,68,0.4)]' : ''}
       `}>
-        <div className={`text-sm font-bold mb-2 uppercase tracking-widest flex items-center gap-2 ${isDeadlocked ? 'text-red-400 animate-pulse' : 'text-white'}`}>
-           {isDeadlocked && <span>⚠️</span>}
-           {isDeadlocked ? 'Stuck! Drag card to burn 🔥' : `${player.color}'s Turn`}
-        </div>
+        {isDeadlocked && (
+          <div className="text-sm font-bold mb-2 uppercase tracking-widest flex items-center gap-2 text-red-400 animate-pulse">
+             <span>⚠️</span>
+             Stuck! Drag card to burn 🔥
+          </div>
+        )}
         
         <div className="flex -space-x-4 hover:space-x-2 transition-all duration-300">
           <AnimatePresence mode='popLayout'>
