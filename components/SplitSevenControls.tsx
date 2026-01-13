@@ -33,18 +33,18 @@ export const SplitSevenControls: React.FC<SplitSevenControlsProps> = ({ gameStat
 
   return (
     <motion.div 
-       initial={{ opacity: 0, y: 20 }}
-       animate={{ opacity: 1, y: 0 }}
-       exit={{ opacity: 0, y: 20 }}
-       className="fixed bottom-40 left-1/2 -translate-x-1/2 z-[60] bg-slate-900/90 backdrop-blur-md border border-amber-500/30 p-4 rounded-2xl shadow-2xl flex flex-col items-center gap-3"
+       initial={{ opacity: 0, y: 20, x: "-50%" }}
+       animate={{ opacity: 1, y: 0, x: "-50%" }}
+       exit={{ opacity: 0, y: 20, x: "-50%" }}
+       className="fixed bottom-56 left-1/2 z-[60] bg-slate-900/80 backdrop-blur-md border border-amber-500/30 p-2 sm:p-4 rounded-2xl shadow-2xl flex flex-col items-center gap-2 sm:gap-3 w-max max-w-[95vw]"
     >
-       <div className="text-white font-bold uppercase tracking-wider text-sm flex items-center gap-2">
+       <div className="text-white font-bold uppercase tracking-wider text-xs sm:text-sm flex items-center gap-2">
           <span>✨</span>
           {isFirstLeg ? "Choose steps to move" : `Move remaining ${remaining} steps`}
        </div>
        
        {isFirstLeg ? (
-          <div className="flex gap-2">
+          <div className="flex gap-1 sm:gap-2">
             {[1, 2, 3, 4, 5, 6, 7].map((steps) => {
               const isPossible = validStepCounts.includes(steps);
               // Logic: You can select '7' to finish immediately.
@@ -56,7 +56,7 @@ export const SplitSevenControls: React.FC<SplitSevenControlsProps> = ({ gameStat
                   onClick={() => isPossible && onSelectSteps(steps)}
                   disabled={!isPossible}
                   className={`
-                    w-10 h-10 rounded-lg font-black text-lg transition-all flex items-center justify-center border-b-4 active:border-b-0 active:translate-y-1
+                    w-9 h-9 sm:w-11 sm:h-11 rounded-lg font-black text-base sm:text-lg transition-all flex items-center justify-center border-b-2 sm:border-b-4 active:border-b-0 active:translate-y-1
                     ${isPossible 
                        ? 'bg-green-600 border-green-800 text-white hover:bg-green-500' 
                        : 'bg-slate-700 border-slate-800 text-slate-500 cursor-not-allowed opacity-50'
@@ -69,7 +69,7 @@ export const SplitSevenControls: React.FC<SplitSevenControlsProps> = ({ gameStat
             })}
           </div>
        ) : (
-          <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-lg text-amber-400 font-mono text-sm">
+          <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-lg text-amber-400 font-mono text-xs sm:text-sm whitespace-nowrap">
              Select a marble to move {remaining} steps...
           </div>
        )}
