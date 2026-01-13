@@ -131,8 +131,9 @@ export const calculateValidMoves = (
     if (marble.position === 'HOME') return; 
 
     // --- 3. SWAP Logic (Black J) ---
+    // STRICT CHECK: Only Black Jack, Only if not overriding steps (7)
     if (card.rank === 'J' && isBlack(card.suit) && !stepsOverride) {
-       // Only own marbles can initiate swap? usually yes.
+       // Swap initiator must be OWN marble
        if (marble.ownerId !== player.id) return;
 
        const targets = Object.values(gameState.marbles).filter(target => 
@@ -153,6 +154,7 @@ export const calculateValidMoves = (
           stepsUsed: 0
         });
        });
+       // CRITICAL: Return here ensures we do NOT fall through to Standard Movement for Black Jack
        return; 
     }
 
@@ -178,7 +180,7 @@ export const calculateValidMoves = (
       case '10': steps = 10; break; // Also Force Discard (handled above)
       case 'J': // Red J is 11
         if (isRed(card.suit)) steps = 11;
-        else return; // Black J is Swap
+        else return; // Safety: Should have been caught by Swap block, but just in case
         break;
       case 'Q': // Black Q is 12
         if (isBlack(card.suit)) steps = 12;
@@ -208,7 +210,6 @@ export const calculateValidMoves = (
           result.path.forEach(nodeId => {
             const pathOccupant = Object.values(gameState.marbles).find(m => m.position === nodeId);
             if (pathOccupant && pathOccupant.id !== marble.id && !pathOccupant.isSafe) {
-               // Usually King kills OWN marbles too on path? Let's say yes for chaos, or NO for safety.
                // Rule: King kills everything in path.
                if (!kills.includes(pathOccupant.id)) kills.push(pathOccupant.id);
             }
@@ -278,12 +279,16 @@ export const executeMove = (
     const sourceMarble = newMarbles[move.marbleId!];
     const targetMarble = newMarbles[move.swapTargetMarbleId];
     
+    // Store positions
     const sourcePos = sourceMarble.position;
+    const targetPos = targetMarble.position;
+    const sourceSafe = sourceMarble.isSafe;
+    const targetSafe = targetMarble.isSafe;
+
+    // Swap positions
+    newMarbles[sourceMarble.id] = { ...sourceMarble, position: targetPos, isSafe: targetSafe };
+    newMarbles[targetMarble.id] = { ...targetMarble, position: sourcePos, isSafe: sourceSafe };
     
-    newMarbles[sourceMarble.id] = { ...sourceMarble, position: targetMarble.position, isSafe: targetMarble.isSafe };
-    newMarbles[targetMarble.id] = { ...targetMarble, position: sourcePos, isSafe: sourceMarble.isSafe };
-    
-    // No home entry on swap usually
     return { 
         nextState: { ...gameState, marbles: newMarbles }, 
         events: { killedOpponent: false, enteredHome: false } 

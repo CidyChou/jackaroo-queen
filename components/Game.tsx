@@ -7,7 +7,8 @@ import { CardHand } from './CardHand';
 import { BurnNotification } from './BurnNotification';
 import { BurnZone } from './BurnZone'; 
 import { ActionChoiceModal } from './ActionChoiceModal'; 
-import { SplitSevenControls } from './SplitSevenControls'; // Import
+import { SplitSevenControls } from './SplitSevenControls';
+import { ActionLog } from './ActionLog'; // Import
 import { AnimatePresence, motion } from 'framer-motion';
 import { getBestMove } from '../services/BotLogic';
 
@@ -106,8 +107,10 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
           if (decision.move.type === 'force_discard') {
              dispatch({ type: 'CONFIRM_MOVE' }); 
           } else {
+             // Standard Move or Swap
              dispatch({ type: 'SELECT_MARBLE', marbleId: decision.move.marbleId! });
              
+             // For Swap, targetPosition is the opponent's position
              if (decision.move.targetPosition) {
                 dispatch({ type: 'SELECT_TARGET_NODE', nodeId: decision.move.targetPosition });
              } else {
@@ -178,19 +181,23 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   const handleMarbleClick = (marbleId: string) => {
     if (currentPlayer.isBot) return; 
     
+    // --- SWAP LOGIC: Clicking Opponent Marble ---
+    // If we have a card and a source marble selected, checking if we clicked a valid swap target
     if (gameState.selectedCardId && gameState.selectedMarbleId) {
-        const targetMarble = gameState.marbles[marbleId];
-        
-        const validMove = gameState.possibleMoves.find(m => 
-           m.targetPosition === targetMarble.position ||
-           m.swapTargetMarbleId === marbleId
-        );
+        const validSwapMove = gameState.possibleMoves.find(m => m.swapTargetMarbleId === marbleId);
+        if (validSwapMove && validSwapMove.targetPosition) {
+           // Execute swap by selecting the node of the target marble
+           dispatch({ type: 'SELECT_TARGET_NODE', nodeId: validSwapMove.targetPosition });
+           return;
+        }
 
-        if (validMove) {
-           if (validMove.targetPosition) {
+        // Standard Move Target Logic (Land on someone to kill)
+        const targetMarble = gameState.marbles[marbleId];
+        const validMove = gameState.possibleMoves.find(m => m.targetPosition === targetMarble.position);
+
+        if (validMove && validMove.targetPosition) {
              dispatch({ type: 'SELECT_TARGET_NODE', nodeId: validMove.targetPosition });
              return;
-           }
         }
     }
 
@@ -240,7 +247,6 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
         onCancel={() => dispatch({ type: 'RESOLVE_RED_Q_DECISION', choice: 'CANCEL' })}
       />
 
-      {/* NEW: 7 Split Controls */}
       <AnimatePresence>
         {gameState.phase === 'HANDLING_SPLIT_7' && !currentPlayer.isBot && (
           <SplitSevenControls 
@@ -320,6 +326,9 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
           </AnimatePresence>
         </div>
       </div>
+      
+      {/* Action Log Component (New) */}
+      <ActionLog logs={gameState.lastActionLog} />
       
       <BurnNotification 
         isVisible={(isDeadlocked || gameState.phase === 'OPPONENT_DISCARD') && !isDraggingCard}

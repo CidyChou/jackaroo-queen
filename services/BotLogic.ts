@@ -1,6 +1,7 @@
 
 import { GameState, Player, MoveCandidate, Card } from "../types";
 import { calculateValidMoves } from "./moveEngine";
+import { TOTAL_BOARD_NODES, START_POSITIONS } from "../constants";
 
 interface BotDecision {
   action: 'MOVE' | 'BURN';
@@ -27,11 +28,12 @@ export const getBestMove = (gameState: GameState, botPlayer: Player): BotDecisio
 
   // 2. If no moves, Burn a card
   if (allMoves.length === 0) {
-    // Burn logic: discard lowest rank or non-power card?
-    // Simple: discard first card.
+    // Burn logic: discard lowest rank or non-power card
+    // Prefer burning non-special cards if possible
+    const sortedHand = [...botPlayer.hand].sort((a, b) => a.value - b.value);
     return {
       action: 'BURN',
-      cardId: botPlayer.hand[0]?.id || ''
+      cardId: sortedHand[0]?.id || ''
     };
   }
 
@@ -39,7 +41,7 @@ export const getBestMove = (gameState: GameState, botPlayer: Player): BotDecisio
   const scoredMoves = allMoves.map(item => {
     return {
       ...item,
-      score: evaluateMove(item.move, gameState)
+      score: evaluateMove(item.move, gameState, botPlayer)
     };
   });
 
@@ -57,9 +59,30 @@ export const getBestMove = (gameState: GameState, botPlayer: Player): BotDecisio
 };
 
 /**
+ * Estimate progress of a marble (0 to 100 roughly)
+ * Simple heuristic based on node index relative to start.
+ */
+const getProgress = (position: string, color: string): number => {
+  if (position === 'BASE') return 0;
+  if (position === 'HOME') return 100;
+  if (position.includes('home_path')) return 95; // In home path
+  if (position.includes('home_')) return 90; // Just entered home
+  
+  if (position.startsWith('node_')) {
+     const idx = parseInt(position.split('_')[1]);
+     const start = START_POSITIONS[color as any];
+     
+     // Calculate distance from start
+     let dist = (idx - start + TOTAL_BOARD_NODES) % TOTAL_BOARD_NODES;
+     return (dist / TOTAL_BOARD_NODES) * 90; // 0 to 90
+  }
+  return 0;
+};
+
+/**
  * Heuristic Scoring Function
  */
-const evaluateMove = (move: MoveCandidate, gameState: GameState): number => {
+const evaluateMove = (move: MoveCandidate, gameState: GameState, player: Player): number => {
   let score = 0;
 
   // PRIORITY 1: ATTACKING (Force Discard)
@@ -73,26 +96,47 @@ const evaluateMove = (move: MoveCandidate, gameState: GameState): number => {
     score += 100 * move.killedMarbleIds.length;
   }
 
-  // PRIORITY 3: EXITING BASE
+  // PRIORITY 3: SWAPPING (Black Jack)
+  if (move.type === 'swap' && move.swapTargetMarbleId && move.marbleId) {
+     const myMarble = gameState.marbles[move.marbleId];
+     const theirMarble = gameState.marbles[move.swapTargetMarbleId];
+     
+     if (myMarble && theirMarble) {
+        const myProg = getProgress(myMarble.position, myMarble.color);
+        const theirProg = getProgress(theirMarble.position, theirMarble.color);
+        
+        // Huge bonus if I am behind and they are ahead
+        const benefit = theirProg - myProg;
+        
+        if (benefit > 0) {
+           score += 50 + benefit; // Base 50 + delta
+        } else {
+           score -= 50; // Don't swap if it hurts me
+        }
+     }
+  }
+
+  // PRIORITY 4: EXITING BASE
   // Important early game
   if (move.type === 'base_exit') {
     score += 60;
   }
 
-  // PRIORITY 4: ENTERING HOME / FINISHING
+  // PRIORITY 5: ENTERING HOME / FINISHING
   if (move.targetPosition?.includes('home')) {
     const node = gameState.board[move.targetPosition];
     if (node.type === 'home') {
-      score += 80; // Finishing is great
+      score += 150; // Finishing is top priority
     } else {
       score += 40; // Safe zone is good
     }
   }
 
-  // PRIORITY 5: DISTANCE / ADVANCING
-  // We want to move forward generally
+  // PRIORITY 6: DISTANCE / ADVANCING
   if (move.type === 'standard') {
-    score += 5; // Base value for moving
+    score += 5; 
+    // Add bonus for moving 11 (Red J) or 13 (K) if it covers distance
+    if (move.stepsUsed && move.stepsUsed > 10) score += 5;
   }
 
   return score;

@@ -23,8 +23,20 @@ export const Board: React.FC<BoardProps> = ({ gameState, onMarbleClick, onNodeCl
 
   const isMarbleSelectable = (marbleId: string) => {
     if (!gameState.selectedCardId) return false;
+    
+    // 1. Is it currently selected?
     if (gameState.selectedMarbleId === marbleId) return true;
-    return gameState.possibleMoves.some(m => m.marbleId === marbleId);
+    
+    // 2. Is it a valid source marble? (Standard move)
+    if (gameState.possibleMoves.some(m => m.marbleId === marbleId)) return true;
+
+    // 3. Is it a valid Swap Target? (Black Jack)
+    // If we have selected OUR marble, we need to check if this marble is a target
+    if (gameState.selectedMarbleId) {
+       if (gameState.possibleMoves.some(m => m.swapTargetMarbleId === marbleId)) return true;
+    }
+    
+    return false;
   };
 
   return (
@@ -95,6 +107,10 @@ export const Board: React.FC<BoardProps> = ({ gameState, onMarbleClick, onNodeCl
            pos = coordinates[marble.position] || { x: 50, y: 50 };
         }
 
+        // Logic for making opponent marbles clickable during swap
+        const selectable = isMarbleSelectable(marble.id);
+        const isSwapTarget = gameState.possibleMoves.some(m => m.swapTargetMarbleId === marble.id);
+
         return (
           <MarbleToken
             key={marble.id}
@@ -103,7 +119,7 @@ export const Board: React.FC<BoardProps> = ({ gameState, onMarbleClick, onNodeCl
             x={pos.x}
             y={pos.y}
             isSelected={gameState.selectedMarbleId === marble.id}
-            isClickable={isMarbleSelectable(marble.id)}
+            isClickable={selectable}
             onClick={() => onMarbleClick(marble.id)}
           />
         );
