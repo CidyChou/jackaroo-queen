@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Shared module compiled files (server compiles to server/dist)
+shared/*.js
+shared/*.js.map
+shared/*.d.ts
+shared/*.d.ts.map
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
