@@ -101,39 +101,112 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
     }, 1000);
   }, []);
 
-  // Start timer when turn changes to human player
+  // Start timer when turn changes to human player, or execute auto play
   useEffect(() => {
-    if (!currentPlayer.isBot && (gameState.phase === 'TURN_START' || gameState.phase === 'PLAYER_INPUT')) {
-      // If human player is in auto mode, execute auto play
-      if (isInAutoMode) {
-        const executeAutoPlay = async () => {
-          await new Promise(r => setTimeout(r, 1000));
-          
+    if (currentPlayer.isBot) return;
+    
+    // List of phases where we might need to take action
+    const actionablePhases = ['TURN_START', 'PLAYER_INPUT', 'DECIDING_10', 'DECIDING_RED_Q', 'HANDLING_SPLIT_7', 'OPPONENT_DISCARD'];
+    
+    if (!actionablePhases.includes(gameState.phase)) {
+      return;
+    }
+
+    // If human player is in auto mode, execute auto play
+    if (isInAutoMode) {
+      let isCancelled = false;
+      
+      const executeAutoPlay = async () => {
+        await new Promise(r => setTimeout(r, 800));
+        if (isCancelled) return;
+        
+        setToastMessage("🤖 托管出牌中...");
+        
+        // Handle special phases
+        if (gameState.phase === 'DECIDING_10') {
+          dispatch({ type: 'RESOLVE_10_DECISION', choice: 'ATTACK' });
+          return;
+        }
+        
+        if (gameState.phase === 'DECIDING_RED_Q') {
+          dispatch({ type: 'RESOLVE_RED_Q_DECISION', choice: 'ATTACK' });
+          return;
+        }
+        
+        if (gameState.phase === 'HANDLING_SPLIT_7') {
+          const card = currentPlayer.hand.find(c => c.id === gameState.selectedCardId);
+          if (card) {
+            const remainingSteps = gameState.split7State?.remainingSteps ?? 7;
+            // Try to find valid moves with decreasing steps
+            for (let steps = remainingSteps; steps >= 1; steps--) {
+              const moves = calculateValidMoves(gameState, currentPlayer, card, null, steps);
+              if (moves.length > 0) {
+                dispatch({ type: 'SELECT_STEP_COUNT', steps });
+                await new Promise(r => setTimeout(r, 300));
+                if (isCancelled) return;
+                const bestMove = moves[0];
+                if (bestMove.marbleId) {
+                  dispatch({ type: 'SELECT_MARBLE', marbleId: bestMove.marbleId });
+                }
+                if (bestMove.targetPosition) {
+                  await new Promise(r => setTimeout(r, 300));
+                  dispatch({ type: 'SELECT_TARGET_NODE', nodeId: bestMove.targetPosition });
+                }
+                return;
+              }
+            }
+            // No valid moves, burn the card
+            dispatch({ type: 'BURN_CARD' });
+          }
+          return;
+        }
+        
+        if (gameState.phase === 'OPPONENT_DISCARD') {
+          if (currentPlayer.hand.length > 0) {
+            const randomCard = currentPlayer.hand[Math.floor(Math.random() * currentPlayer.hand.length)];
+            dispatch({ type: 'SELECT_CARD', cardId: randomCard.id });
+            await new Promise(r => setTimeout(r, 500));
+            dispatch({ type: 'BURN_CARD' });
+          }
+          return;
+        }
+        
+        if (gameState.phase === 'PLAYER_INPUT' && gameState.selectedCardId && gameState.possibleMoves.length > 0) {
+          const bestMove = gameState.possibleMoves[0];
+          if (bestMove.marbleId && !gameState.selectedMarbleId) {
+            dispatch({ type: 'SELECT_MARBLE', marbleId: bestMove.marbleId });
+            await new Promise(r => setTimeout(r, 300));
+          }
+          if (bestMove.targetPosition) {
+            dispatch({ type: 'SELECT_TARGET_NODE', nodeId: bestMove.targetPosition });
+          } else {
+            dispatch({ type: 'CONFIRM_MOVE' });
+          }
+          return;
+        }
+        
+        // Normal turn start
+        if (gameState.phase === 'TURN_START') {
           const decision = getBestMove(gameState, currentPlayer);
           
           if (decision.action === 'BURN') {
             dispatch({ type: 'SELECT_CARD', cardId: decision.cardId });
-            setToastMessage("🤖 托管出牌中...");
             await new Promise(r => setTimeout(r, 800));
+            if (isCancelled) return;
             dispatch({ type: 'BURN_CARD' });
           } else if (decision.action === 'MOVE' && decision.move) {
             dispatch({ type: 'SELECT_CARD', cardId: decision.cardId });
-            await new Promise(r => setTimeout(r, 500));
-            
-            if (decision.move.type === 'force_discard') {
-              dispatch({ type: 'CONFIRM_MOVE' });
-            } else {
-              dispatch({ type: 'SELECT_MARBLE', marbleId: decision.move.marbleId! });
-              if (decision.move.targetPosition) {
-                dispatch({ type: 'SELECT_TARGET_NODE', nodeId: decision.move.targetPosition });
-              } else {
-                dispatch({ type: 'CONFIRM_MOVE' });
-              }
-            }
+            // Note: SELECT_CARD may trigger special phases for 10, 7, Red Q
+            // Those will be handled in the next effect cycle
           }
-        };
-        executeAutoPlay();
-      } else {
+        }
+      };
+      
+      executeAutoPlay();
+      return () => { isCancelled = true; };
+    } else {
+      // Not in auto mode, start the turn timer
+      if (gameState.phase === 'TURN_START' || gameState.phase === 'PLAYER_INPUT') {
         startTurnTimer();
       }
     }
@@ -145,7 +218,7 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
         turnTimerRef.current = null;
       }
     };
-  }, [currentPlayer.isBot, gameState.phase, gameState.currentPlayerIndex, isInAutoMode, startTurnTimer]);
+  }, [currentPlayer.isBot, gameState.phase, gameState.currentPlayerIndex, gameState.selectedCardId, isInAutoMode, startTurnTimer]);
 
   // --- Bot Turn Logic ---
   useEffect(() => {
@@ -222,15 +295,22 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
 
   // --- Handlers ---
 
+  // Handle exit from auto mode
+  const handleExitAutoMode = () => {
+    setIsInAutoMode(false);
+    startTurnTimer();
+    setToastMessage('已退出托管模式');
+    setTimeout(() => setToastMessage(null), 1500);
+  };
+
   const handleCardSelect = (cardId: string) => {
     if (currentPlayer.isBot) return;
 
-    // Exit auto mode when user takes action
+    // Block actions if in auto mode - must click cancel button first
     if (isInAutoMode) {
-      setIsInAutoMode(false);
-      startTurnTimer();
-      setToastMessage('已退出托管模式');
-      setTimeout(() => setToastMessage(null), 1500);
+      setToastMessage('请先点击"取消托管"按钮');
+      setTimeout(() => setToastMessage(null), 2000);
+      return;
     }
 
     if (gameState.selectedCardId === cardId) {
@@ -363,6 +443,37 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
                <span className="text-3xl">⚔️</span>
              </div>
            </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Auto Mode Overlay - Cancel Button in Center */}
+      <AnimatePresence>
+        {isInAutoMode && !currentPlayer.isBot && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            data-testid="auto-mode-overlay"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-slate-800/95 backdrop-blur-md rounded-2xl border-2 border-purple-500/50 p-8 shadow-2xl text-center"
+            >
+              <div className="text-6xl mb-4">🤖</div>
+              <h2 className="text-2xl font-black text-purple-400 mb-2">托管模式</h2>
+              <p className="text-slate-300 mb-6">系统正在自动帮您出牌</p>
+              <button
+                onClick={handleExitAutoMode}
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl border-2 border-purple-400/50 text-white font-bold text-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                ✋ 取消托管
+              </button>
+              <p className="text-slate-500 text-sm mt-4">点击按钮恢复手动操作</p>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

@@ -75,6 +75,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const myPlayer = gameState.players[playerIndex];
   const isMyTurn = gameState.currentPlayerIndex === playerIndex;
+  const isInAutoMode = autoModePlayerIndices.includes(playerIndex);
 
 
   // ============================================
@@ -208,6 +209,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
           }
         } else {
           setAutoModePlayerIndices(prev => prev.filter(i => i !== message.playerIndex));
+          if (message.playerIndex === playerIndex) {
+            setToastMessage('已退出托管模式');
+            setTimeout(() => setToastMessage(null), 2000);
+          }
         }
         break;
 
@@ -272,6 +277,13 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
   // ============================================
 
   const handleCardSelect = (cardId: string) => {
+    // Block actions if in auto mode
+    if (isInAutoMode) {
+      setToastMessage('请先点击"取消托管"按钮');
+      setTimeout(() => setToastMessage(null), 2000);
+      return;
+    }
+
     // Only allow card selection on my turn or during OPPONENT_DISCARD phase when I'm the victim
     if (!isMyTurn && gameState.phase !== 'OPPONENT_DISCARD') return;
     if (gameState.phase === 'OPPONENT_DISCARD' && gameState.currentPlayerIndex !== playerIndex) return;
@@ -349,6 +361,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
     webSocketService.send({ type: 'LEAVE_ROOM' });
     webSocketService.disconnect();
     onExit();
+  };
+
+  const handleExitAutoMode = () => {
+    webSocketService.send({ type: 'EXIT_AUTO_MODE' });
   };
 
   const selectedCard = myPlayer.hand.find(c => c.id === gameState.selectedCardId);
@@ -462,6 +478,36 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
         )}
       </AnimatePresence>
 
+      {/* Auto Mode Overlay - Cancel Button in Center */}
+      <AnimatePresence>
+        {isInAutoMode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            data-testid="auto-mode-overlay"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-slate-800/95 backdrop-blur-md rounded-2xl border-2 border-purple-500/50 p-8 shadow-2xl text-center"
+            >
+              <div className="text-6xl mb-4">🤖</div>
+              <h2 className="text-2xl font-black text-purple-400 mb-2">托管模式</h2>
+              <p className="text-slate-300 mb-6">系统正在自动帮您出牌</p>
+              <button
+                onClick={handleExitAutoMode}
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl border-2 border-purple-400/50 text-white font-bold text-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                ✋ 取消托管
+              </button>
+              <p className="text-slate-500 text-sm mt-4">点击按钮恢复手动操作</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header with game info and connection status */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">

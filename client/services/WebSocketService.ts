@@ -14,6 +14,7 @@ export type {
   JoinRoomMessage,
   LeaveRoomMessage,
   GameActionMessage,
+  ExitAutoModeMessage,
   PingMessage,
   RoomCreatedMessage,
   RoomJoinedMessage,

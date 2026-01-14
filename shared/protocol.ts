@@ -15,6 +15,7 @@ export type ClientMessageType =
   | 'JOIN_ROOM'
   | 'LEAVE_ROOM'
   | 'GAME_ACTION'
+  | 'EXIT_AUTO_MODE'
   | 'PING';
 
 export interface CreateRoomMessage {
@@ -40,11 +41,16 @@ export interface PingMessage {
   type: 'PING';
 }
 
+export interface ExitAutoModeMessage {
+  type: 'EXIT_AUTO_MODE';
+}
+
 export type ClientMessage =
   | CreateRoomMessage
   | JoinRoomMessage
   | LeaveRoomMessage
   | GameActionMessage
+  | ExitAutoModeMessage
   | PingMessage;
 
 // ============================================
@@ -159,6 +165,7 @@ const CLIENT_MESSAGE_TYPES: ClientMessageType[] = [
   'JOIN_ROOM',
   'LEAVE_ROOM',
   'GAME_ACTION',
+  'EXIT_AUTO_MODE',
   'PING',
 ];
 
@@ -196,6 +203,7 @@ export function validateClientMessage(data: unknown): ValidationResult {
     case 'GAME_ACTION':
       return validateGameActionMessage(msg);
     case 'LEAVE_ROOM':
+    case 'EXIT_AUTO_MODE':
     case 'PING':
       return { valid: true };
     default:

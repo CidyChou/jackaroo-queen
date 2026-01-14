@@ -555,6 +555,23 @@ export class Room {
    */
   private executeActionsSequentially(actions: AutoPlayAction[], index: number): void {
     if (index >= actions.length || !this.gameState) {
+      // All actions complete, check if we need more actions based on current state
+      if (this.gameState) {
+        const currentPlayerIndex = this.gameState.currentPlayerIndex;
+        
+        // If still in a special phase, get more actions
+        if (this.gameState.autoModePlayerIndices.includes(currentPlayerIndex)) {
+          const moreActions = getAutoPlayActions(this.gameState, currentPlayerIndex);
+          if (moreActions.length > 0) {
+            this.logger.debug(`Continuing auto play with ${moreActions.length} more actions`);
+            this.autoPlayTimeout = setTimeout(() => {
+              this.executeActionsSequentially(moreActions, 0);
+            }, 500);
+            return;
+          }
+        }
+      }
+      
       // All actions complete, notify and restart timer for next turn
       if (this.onAutoPlayComplete) {
         this.onAutoPlayComplete();
@@ -586,6 +603,24 @@ export class Room {
         break;
       case 'BURN_CARD':
         gameAction = { type: 'BURN_CARD' };
+        break;
+      case 'RESOLVE_10_DECISION':
+        if (action.choice === 'MOVE' || action.choice === 'ATTACK') {
+          gameAction = { type: 'RESOLVE_10_DECISION', choice: action.choice };
+        }
+        break;
+      case 'RESOLVE_RED_Q_DECISION':
+        if (action.choice === 'ATTACK' || action.choice === 'CANCEL') {
+          gameAction = { type: 'RESOLVE_RED_Q_DECISION', choice: action.choice };
+        }
+        break;
+      case 'SELECT_STEP_COUNT':
+        if (action.steps) {
+          gameAction = { type: 'SELECT_STEP_COUNT', steps: action.steps };
+        }
+        break;
+      case 'RESOLVE_TURN':
+        gameAction = { type: 'RESOLVE_TURN' };
         break;
     }
 

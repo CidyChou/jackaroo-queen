@@ -151,19 +151,30 @@ const evaluateMove = (move: MoveCandidate, gameState: GameState, player: Player)
  * Returns the sequence of actions to perform
  */
 export interface AutoPlayAction {
-  type: 'SELECT_CARD' | 'SELECT_MARBLE' | 'SELECT_TARGET_NODE' | 'CONFIRM_MOVE' | 'BURN_CARD';
+  type: 'SELECT_CARD' | 'SELECT_MARBLE' | 'SELECT_TARGET_NODE' | 'CONFIRM_MOVE' | 'BURN_CARD' 
+      | 'RESOLVE_10_DECISION' | 'RESOLVE_RED_Q_DECISION' | 'SELECT_STEP_COUNT' | 'RESOLVE_TURN';
   cardId?: string;
   marbleId?: string;
   nodeId?: string;
+  choice?: 'MOVE' | 'ATTACK' | 'CANCEL';
+  steps?: number;
 }
 
 export const getAutoPlayActions = (gameState: GameState, playerIndex: number): AutoPlayAction[] => {
   const player = gameState.players[playerIndex];
+  
+  const actions: AutoPlayAction[] = [];
+
+  // Handle RESOLVING_MOVE phase - need to resolve turn
+  if (gameState.phase === 'RESOLVING_MOVE') {
+    actions.push({ type: 'RESOLVE_TURN' });
+    return actions;
+  }
+
+  // If no cards in hand, can't do anything
   if (!player || player.hand.length === 0) {
     return [];
   }
-
-  const actions: AutoPlayAction[] = [];
 
   // Handle OPPONENT_DISCARD phase - just burn a random card
   if (gameState.phase === 'OPPONENT_DISCARD') {
@@ -173,7 +184,69 @@ export const getAutoPlayActions = (gameState: GameState, playerIndex: number): A
     return actions;
   }
 
-  // Normal turn - use bot decision logic
+  // Handle special card decision phases (for non-bot players in auto mode)
+  if (gameState.phase === 'DECIDING_10') {
+    // For 10, prefer ATTACK (force discard) as it's strategically strong
+    actions.push({ type: 'RESOLVE_10_DECISION', choice: 'ATTACK' });
+    return actions;
+  }
+
+  if (gameState.phase === 'DECIDING_RED_Q') {
+    // For Red Q, use ATTACK
+    actions.push({ type: 'RESOLVE_RED_Q_DECISION', choice: 'ATTACK' });
+    return actions;
+  }
+
+  if (gameState.phase === 'HANDLING_SPLIT_7') {
+    // For 7, select steps and execute move
+    const card = player.hand.find(c => c.id === gameState.selectedCardId);
+    if (card) {
+      const remainingSteps = gameState.split7State?.remainingSteps ?? 7;
+      
+      // Try to find a valid move with remaining steps
+      for (let steps = remainingSteps; steps >= 1; steps--) {
+        const moves = calculateValidMoves(gameState, player, card, null, steps);
+        if (moves.length > 0) {
+          const bestMove = moves[0];
+          actions.push({ type: 'SELECT_STEP_COUNT', steps });
+          if (bestMove.marbleId) {
+            actions.push({ type: 'SELECT_MARBLE', marbleId: bestMove.marbleId });
+          }
+          if (bestMove.targetPosition) {
+            actions.push({ type: 'SELECT_TARGET_NODE', nodeId: bestMove.targetPosition });
+          }
+          return actions;
+        }
+      }
+      
+      // No valid moves for 7, need to burn (shouldn't happen often)
+      actions.push({ type: 'BURN_CARD' });
+      return actions;
+    }
+  }
+
+  // Handle PLAYER_INPUT phase - continue with move execution
+  if (gameState.phase === 'PLAYER_INPUT' && gameState.selectedCardId) {
+    const card = player.hand.find(c => c.id === gameState.selectedCardId);
+    if (card && gameState.possibleMoves.length > 0) {
+      const bestMove = gameState.possibleMoves[0];
+      if (bestMove.marbleId && !gameState.selectedMarbleId) {
+        actions.push({ type: 'SELECT_MARBLE', marbleId: bestMove.marbleId });
+      }
+      if (bestMove.targetPosition) {
+        actions.push({ type: 'SELECT_TARGET_NODE', nodeId: bestMove.targetPosition });
+      } else {
+        actions.push({ type: 'CONFIRM_MOVE' });
+      }
+      return actions;
+    }
+  }
+
+  // Normal turn start - use bot decision logic
+  if (gameState.phase !== 'TURN_START') {
+    return actions;
+  }
+
   const decision = getBestMove(gameState, player);
 
   if (decision.action === 'BURN') {

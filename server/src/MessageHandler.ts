@@ -114,6 +114,9 @@ export class MessageHandler implements IMessageHandler {
         case 'GAME_ACTION':
           this.handleGameAction(session, message);
           break;
+        case 'EXIT_AUTO_MODE':
+          this.handleExitAutoMode(session);
+          break;
         case 'PING':
           this.handlePing(session);
           break;
@@ -395,16 +398,17 @@ export class MessageHandler implements IMessageHandler {
       playerIndex,
     });
 
+    // Block actions if player is in auto mode - must exit auto mode first
+    if (playerIndex !== null && room.isPlayerInAutoMode(playerIndex)) {
+      session.send(createErrorMessage('VALIDATION_ERROR', '托管模式中，请先点击"取消托管"按钮'));
+      return;
+    }
+
     // Validate action based on type
     const validationError = this.validateGameAction(session, room, action);
     if (validationError) {
       session.send(createErrorMessage(validationError.code, validationError.message));
       return;
-    }
-
-    // Player made an action - remove from auto mode if they were in it
-    if (playerIndex !== null && room.isPlayerInAutoMode(playerIndex)) {
-      room.removeFromAutoMode(playerIndex);
     }
 
     // Get state before action to check for turn change
@@ -609,5 +613,42 @@ export class MessageHandler implements IMessageHandler {
       type: 'PONG',
     };
     session.send(pongMessage);
+  }
+
+  /**
+   * Handles EXIT_AUTO_MODE message
+   * Removes player from auto mode and restarts their turn timer
+   */
+  private handleExitAutoMode(session: PlayerSession): void {
+    const roomCode = session.getRoomCode();
+    if (!roomCode) {
+      session.send(createErrorMessage('NOT_IN_ROOM', 'Not in a room'));
+      return;
+    }
+
+    const room = this.roomManager.getRoom(roomCode);
+    if (!room) {
+      session.send(createErrorMessage('ROOM_NOT_FOUND', 'Room not found'));
+      return;
+    }
+
+    const playerIndex = session.getPlayerIndex();
+    if (playerIndex === null) {
+      session.send(createErrorMessage('NOT_IN_ROOM', 'Not in room'));
+      return;
+    }
+
+    // Remove player from auto mode
+    if (room.isPlayerInAutoMode(playerIndex)) {
+      room.removeFromAutoMode(playerIndex);
+      
+      // Restart turn timer for this player if it's their turn
+      const gameState = room.getGameState();
+      if (gameState && gameState.currentPlayerIndex === playerIndex) {
+        room.startTurnTimer();
+      }
+      
+      this.logger.info(`Player ${playerIndex} manually exited auto mode in room ${roomCode}`);
+    }
   }
 }
