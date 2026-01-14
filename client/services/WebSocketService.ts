@@ -21,6 +21,8 @@ export type {
   PlayerLeftMessage,
   GameStartedMessage,
   StateUpdateMessage,
+  TimerUpdateMessage,
+  AutoModeChangedMessage,
   ErrorMessage,
   PongMessage,
   ErrorCode,

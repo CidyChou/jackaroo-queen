@@ -1,5 +1,5 @@
 
-import React, { useReducer, useEffect, useState, useMemo } from 'react';
+import React, { useReducer, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { createInitialState, enhancedGameReducer } from '../services/gameLogic';
 import { calculateValidMoves } from '../services/moveEngine';
 import { Board } from './Board';
@@ -17,6 +17,9 @@ interface GameProps {
   onExit: () => void;
 }
 
+// Constants
+const TURN_TIME_LIMIT = 15; // seconds
+
 export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   const [gameState, dispatch] = useReducer(enhancedGameReducer, playerCount, createInitialState);
   
@@ -27,6 +30,12 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
   const [shakingCardId, setShakingCardId] = useState<string | null>(null);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
   const [isHoveringBurn, setIsHoveringBurn] = useState(false);
+  
+  // Turn timer and auto mode (for human player only)
+  const [turnTimeRemaining, setTurnTimeRemaining] = useState<number>(TURN_TIME_LIMIT);
+  const [isInAutoMode, setIsInAutoMode] = useState(false);
+  const turnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const turnStartRef = useRef<number>(Date.now());
 
   // --- Logic: Detect Deadlock (Scenario B) ---
   const isDeadlocked = useMemo(() => {
@@ -61,6 +70,82 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
      const moves = calculateValidMoves(gameState, currentPlayer, card, null);
      return moves.some(m => m.type !== 'force_discard');
   }, [gameState, currentPlayer]);
+
+  // --- Turn Timer Logic for Human Player ---
+  const startTurnTimer = useCallback(() => {
+    // Clear existing timer
+    if (turnTimerRef.current) {
+      clearInterval(turnTimerRef.current);
+    }
+    
+    // Reset timer
+    turnStartRef.current = Date.now();
+    setTurnTimeRemaining(TURN_TIME_LIMIT);
+    
+    // Start countdown
+    turnTimerRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - turnStartRef.current) / 1000);
+      const remaining = Math.max(0, TURN_TIME_LIMIT - elapsed);
+      setTurnTimeRemaining(remaining);
+      
+      if (remaining <= 0) {
+        // Time's up - enter auto mode
+        if (turnTimerRef.current) {
+          clearInterval(turnTimerRef.current);
+          turnTimerRef.current = null;
+        }
+        setIsInAutoMode(true);
+        setToastMessage('⏱️ 超时！已进入托管模式');
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+    }, 1000);
+  }, []);
+
+  // Start timer when turn changes to human player
+  useEffect(() => {
+    if (!currentPlayer.isBot && (gameState.phase === 'TURN_START' || gameState.phase === 'PLAYER_INPUT')) {
+      // If human player is in auto mode, execute auto play
+      if (isInAutoMode) {
+        const executeAutoPlay = async () => {
+          await new Promise(r => setTimeout(r, 1000));
+          
+          const decision = getBestMove(gameState, currentPlayer);
+          
+          if (decision.action === 'BURN') {
+            dispatch({ type: 'SELECT_CARD', cardId: decision.cardId });
+            setToastMessage("🤖 托管出牌中...");
+            await new Promise(r => setTimeout(r, 800));
+            dispatch({ type: 'BURN_CARD' });
+          } else if (decision.action === 'MOVE' && decision.move) {
+            dispatch({ type: 'SELECT_CARD', cardId: decision.cardId });
+            await new Promise(r => setTimeout(r, 500));
+            
+            if (decision.move.type === 'force_discard') {
+              dispatch({ type: 'CONFIRM_MOVE' });
+            } else {
+              dispatch({ type: 'SELECT_MARBLE', marbleId: decision.move.marbleId! });
+              if (decision.move.targetPosition) {
+                dispatch({ type: 'SELECT_TARGET_NODE', nodeId: decision.move.targetPosition });
+              } else {
+                dispatch({ type: 'CONFIRM_MOVE' });
+              }
+            }
+          }
+        };
+        executeAutoPlay();
+      } else {
+        startTurnTimer();
+      }
+    }
+    
+    // Cleanup timer when component unmounts or turn changes
+    return () => {
+      if (turnTimerRef.current) {
+        clearInterval(turnTimerRef.current);
+        turnTimerRef.current = null;
+      }
+    };
+  }, [currentPlayer.isBot, gameState.phase, gameState.currentPlayerIndex, isInAutoMode, startTurnTimer]);
 
   // --- Bot Turn Logic ---
   useEffect(() => {
@@ -139,6 +224,14 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
 
   const handleCardSelect = (cardId: string) => {
     if (currentPlayer.isBot) return;
+
+    // Exit auto mode when user takes action
+    if (isInAutoMode) {
+      setIsInAutoMode(false);
+      startTurnTimer();
+      setToastMessage('已退出托管模式');
+      setTimeout(() => setToastMessage(null), 1500);
+    }
 
     if (gameState.selectedCardId === cardId) {
       dispatch({ type: 'CANCEL_SELECTION' });
@@ -300,6 +393,34 @@ export const Game: React.FC<GameProps> = ({ playerCount, onExit }) => {
                   </>
                 )}
              </div>
+
+             {/* Turn Timer - only show for human player */}
+             {!currentPlayer.isBot && (
+               <div 
+                 className={`px-3 py-1 rounded font-bold text-sm flex items-center gap-2 transition-all duration-300
+                   ${turnTimeRemaining <= 5 
+                     ? 'bg-red-900/70 text-red-200 animate-pulse' 
+                     : turnTimeRemaining <= 10 
+                       ? 'bg-orange-900/50 text-orange-200' 
+                       : 'bg-slate-800/50 text-slate-200'}
+                 `}
+                 data-testid="turn-timer"
+               >
+                 <span className="text-lg">⏱️</span>
+                 <span className="font-mono text-lg">{turnTimeRemaining}s</span>
+               </div>
+             )}
+
+             {/* Auto Mode Indicator */}
+             {isInAutoMode && (
+               <div 
+                 className="px-3 py-1 rounded font-bold text-sm bg-purple-900/70 text-purple-200 flex items-center gap-2 animate-pulse"
+                 data-testid="auto-mode-indicator"
+               >
+                 <span className="text-lg">🤖</span>
+                 托管中
+               </div>
+             )}
           </div>
         </div>
       </div>

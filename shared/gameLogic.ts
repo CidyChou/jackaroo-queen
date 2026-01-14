@@ -105,7 +105,10 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
       pendingAttackerIndex: null,
       repeatTurn: false,
       split7State: null,
-      lastActionLog: ['Welcome to Jackaroo 1v1!', 'Attack Enabled!']
+      lastActionLog: ['Welcome to Jackaroo 1v1!', 'Attack Enabled!'],
+      turnTimeRemaining: 15,
+      turnStartedAt: Date.now(),
+      autoModePlayerIndices: []
     };
   };
 

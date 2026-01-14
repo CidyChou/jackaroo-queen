@@ -35,6 +35,7 @@ type OpponentStatus = 'connected' | 'disconnected' | 'reconnecting';
 // ============================================
 
 const DISCONNECT_TIMEOUT_MS = 30000; // 30 seconds
+const TURN_TIME_LIMIT = 15; // seconds
 
 // ============================================
 // Component
@@ -55,6 +56,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
   const [showDisconnectNotification, setShowDisconnectNotification] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
   const [winReason, setWinReason] = useState<string | null>(null);
+  
+  // Turn timer and auto mode
+  const [turnTimeRemaining, setTurnTimeRemaining] = useState<number>(TURN_TIME_LIMIT);
+  const [autoModePlayerIndices, setAutoModePlayerIndices] = useState<number[]>([]);
   
   // UI States
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -185,6 +190,24 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
             clearInterval(disconnectTimeoutRef.current as unknown as ReturnType<typeof setInterval>);
             disconnectTimeoutRef.current = null;
           }
+        }
+        break;
+
+      case 'TIMER_UPDATE':
+        setTurnTimeRemaining(message.timeRemaining);
+        break;
+
+      case 'AUTO_MODE_CHANGED':
+        if (message.isAutoMode) {
+          setAutoModePlayerIndices(prev => 
+            prev.includes(message.playerIndex) ? prev : [...prev, message.playerIndex]
+          );
+          if (message.playerIndex === playerIndex) {
+            setToastMessage('⏱️ 超时！已进入托管模式');
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        } else {
+          setAutoModePlayerIndices(prev => prev.filter(i => i !== message.playerIndex));
         }
         break;
 
@@ -477,6 +500,32 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
                 </>
               )}
             </div>
+
+            {/* Turn Timer */}
+            <div 
+              className={`px-3 py-1 rounded font-bold text-sm flex items-center gap-2 transition-all duration-300
+                ${turnTimeRemaining <= 5 
+                  ? 'bg-red-900/70 text-red-200 animate-pulse' 
+                  : turnTimeRemaining <= 10 
+                    ? 'bg-orange-900/50 text-orange-200' 
+                    : 'bg-slate-800/50 text-slate-200'}
+              `}
+              data-testid="turn-timer"
+            >
+              <span className="text-lg">⏱️</span>
+              <span className="font-mono text-lg">{turnTimeRemaining}s</span>
+            </div>
+
+            {/* Auto Mode Indicator */}
+            {autoModePlayerIndices.includes(playerIndex) && (
+              <div 
+                className="px-3 py-1 rounded font-bold text-sm bg-purple-900/70 text-purple-200 flex items-center gap-2 animate-pulse"
+                data-testid="auto-mode-indicator"
+              >
+                <span className="text-lg">🤖</span>
+                托管中
+              </div>
+            )}
           </div>
         </div>
 
@@ -484,21 +533,27 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
         <div className="pointer-events-auto bg-black/50 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-              <span className="text-sm text-slate-400">You</span>
+              <span className={`w-2 h-2 rounded-full ${autoModePlayerIndices.includes(playerIndex) ? 'bg-purple-400 animate-pulse' : 'bg-green-400'}`}></span>
+              <span className="text-sm text-slate-400">
+                You {autoModePlayerIndices.includes(playerIndex) && <span className="text-purple-300">(托管)</span>}
+              </span>
             </div>
             <div className="flex items-center gap-2" data-testid="opponent-status">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  opponentStatus === 'connected'
-                    ? 'bg-green-400'
-                    : opponentStatus === 'reconnecting'
-                    ? 'bg-yellow-400 animate-pulse'
-                    : 'bg-red-400'
+                  opponentStatus !== 'connected'
+                    ? opponentStatus === 'reconnecting'
+                      ? 'bg-yellow-400 animate-pulse'
+                      : 'bg-red-400'
+                    : autoModePlayerIndices.includes(1 - playerIndex)
+                      ? 'bg-purple-400 animate-pulse'
+                      : 'bg-green-400'
                 }`}
               ></span>
               <span className="text-sm text-slate-400">
-                Opponent {opponentStatus !== 'connected' && `(${opponentStatus})`}
+                Opponent 
+                {opponentStatus !== 'connected' && ` (${opponentStatus})`}
+                {opponentStatus === 'connected' && autoModePlayerIndices.includes(1 - playerIndex) && <span className="text-purple-300"> (托管)</span>}
               </span>
             </div>
           </div>

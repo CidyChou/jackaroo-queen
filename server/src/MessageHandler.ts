@@ -25,8 +25,11 @@ import {
   ErrorCode,
   parseClientMessage,
   createErrorMessage,
+  TimerUpdateMessage,
+  AutoModeChangedMessage,
 } from '../../shared/protocol.js';
 import { GameAction } from '../../shared/types.js';
+import { Room } from './Room.js';
 
 export interface MessageHandlerConfig {
   /** Rate limiter configuration */
@@ -385,10 +388,11 @@ export class MessageHandler implements IMessageHandler {
     }
 
     const action = msg.action;
+    const playerIndex = session.getPlayerIndex();
 
     // Log the game action with timestamp (Requirements: 7.2)
     this.logger.logGameAction(session.sessionId, roomCode, action.type, {
-      playerIndex: session.getPlayerIndex(),
+      playerIndex,
     });
 
     // Validate action based on type
@@ -397,6 +401,15 @@ export class MessageHandler implements IMessageHandler {
       session.send(createErrorMessage(validationError.code, validationError.message));
       return;
     }
+
+    // Player made an action - remove from auto mode if they were in it
+    if (playerIndex !== null && room.isPlayerInAutoMode(playerIndex)) {
+      room.removeFromAutoMode(playerIndex);
+    }
+
+    // Get state before action to check for turn change
+    const stateBefore = room.getGameState();
+    const playerBefore = stateBefore?.currentPlayerIndex;
 
     // Process the action
     const newState = room.processAction(session.sessionId, action);
@@ -407,6 +420,20 @@ export class MessageHandler implements IMessageHandler {
 
     // Broadcast state update to all players using Room's broadcast method
     room.broadcastStateUpdate();
+
+    // Check if turn changed or if we need to restart timer
+    const shouldRestartTimer = 
+      action.type === 'RESOLVE_TURN' || 
+      (newState.currentPlayerIndex !== playerBefore) ||
+      (newState.phase === 'TURN_START' && stateBefore?.phase !== 'TURN_START');
+
+    if (shouldRestartTimer) {
+      // Restart turn timer for new player
+      room.startTurnTimer();
+      
+      // Check if new player is in auto mode
+      room.checkAndExecuteAutoPlay();
+    }
 
     this.logger.debug(`Action ${action.type} processed in room ${roomCode}`);
   }
@@ -494,10 +521,84 @@ export class MessageHandler implements IMessageHandler {
       return;
     }
 
+    // Setup timer callbacks
+    this.setupRoomTimerCallbacks(room);
+
     // Broadcast game started to all players using Room's broadcast method
     room.broadcastGameStarted();
 
+    // Start turn timer
+    room.startTurnTimer();
+
     this.logger.info(`Game started in room ${room.roomCode}`);
+  }
+
+  /**
+   * Sets up timer callbacks for a room
+   */
+  private setupRoomTimerCallbacks(room: Room): void {
+    // Timer update callback - broadcast to all players
+    const onTimerUpdate = (timeRemaining: number, playerIndex: number) => {
+      const timerMessage: TimerUpdateMessage = {
+        type: 'TIMER_UPDATE',
+        timeRemaining,
+        currentPlayerIndex: playerIndex
+      };
+      
+      for (const player of room.getPlayers()) {
+        if (player.isConnected()) {
+          player.send(timerMessage);
+        }
+      }
+    };
+
+    // Auto mode change callback
+    const onAutoModeChange = (playerIndex: number, isAutoMode: boolean) => {
+      const autoModeMessage: AutoModeChangedMessage = {
+        type: 'AUTO_MODE_CHANGED',
+        playerIndex,
+        isAutoMode
+      };
+      
+      for (const player of room.getPlayers()) {
+        if (player.isConnected()) {
+          player.send(autoModeMessage);
+        }
+      }
+
+      // Add to action log
+      this.logger.info(`Player ${playerIndex} ${isAutoMode ? 'entered' : 'exited'} auto mode in room ${room.roomCode}`);
+    };
+
+    // Auto play complete callback - restart timer for next turn
+    const onAutoPlayComplete = () => {
+      // Check if we need to auto-resolve the turn
+      const gameState = room.getGameState();
+      if (gameState?.phase === 'RESOLVING_MOVE') {
+        // Auto-resolve the turn after a short delay
+        setTimeout(() => {
+          const state = room.getGameState();
+          if (state?.phase === 'RESOLVING_MOVE') {
+            room.processAction('', { type: 'RESOLVE_TURN' });
+            room.broadcastStateUpdate();
+            
+            // Restart timer for next player
+            room.startTurnTimer();
+            
+            // Check if next player is also in auto mode
+            room.checkAndExecuteAutoPlay();
+          }
+        }, 500);
+      } else {
+        // Restart timer for next player
+        room.startTurnTimer();
+        
+        // Check if next player is also in auto mode
+        room.checkAndExecuteAutoPlay();
+      }
+    };
+
+    room.setTimerCallbacks(onTimerUpdate, onAutoModeChange, onAutoPlayComplete);
   }
 
   /**

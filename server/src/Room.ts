@@ -5,6 +5,7 @@
  * - Player management (add/remove)
  * - Game state via shared logic
  * - State filtering (hide other players' hands)
+ * - Turn timer and auto-mode (trusteeship)
  * 
  * Requirements: 3.2, 3.3, 4.5
  */
@@ -12,10 +13,15 @@
 import { v4 as uuidv4 } from 'uuid';
 import { GameState, GameAction, Card, Player } from '../../shared/types.js';
 import { createGameLogic, GameLogicConfig } from '../../shared/gameLogic.js';
+import { getAutoPlayActions, AutoPlayAction } from '../../shared/BotLogic.js';
 import { PlayerSession } from './PlayerSession.js';
 import { Logger } from './Logger.js';
 
 export type RoomStatus = 'waiting' | 'playing' | 'finished';
+
+// Turn timer configuration
+export const TURN_TIME_LIMIT = 15; // seconds
+export const TIMER_UPDATE_INTERVAL = 1000; // 1 second
 
 export interface RoomConfig {
   maxPlayers: 2 | 4;
@@ -77,6 +83,13 @@ export class Room {
   private logger: Logger;
   private createdAt: number;
   private lastActivityAt: number;
+  
+  // Turn timer
+  private turnTimer: ReturnType<typeof setInterval> | null = null;
+  private autoPlayTimeout: ReturnType<typeof setTimeout> | null = null;
+  private onTimerUpdate: ((timeRemaining: number, playerIndex: number) => void) | null = null;
+  private onAutoModeChange: ((playerIndex: number, isAutoMode: boolean) => void) | null = null;
+  private onAutoPlayComplete: (() => void) | null = null;
 
   constructor(config: RoomConfig) {
     this.roomCode = config.roomCode;
@@ -394,5 +407,241 @@ export class Room {
       type: 'GAME_STARTED',
       state,
     }));
+  }
+
+  // ============================================
+  // Turn Timer Management
+  // ============================================
+
+  /**
+   * Sets callback for timer updates
+   */
+  setTimerCallbacks(
+    onTimerUpdate: (timeRemaining: number, playerIndex: number) => void,
+    onAutoModeChange: (playerIndex: number, isAutoMode: boolean) => void,
+    onAutoPlayComplete: () => void
+  ): void {
+    this.onTimerUpdate = onTimerUpdate;
+    this.onAutoModeChange = onAutoModeChange;
+    this.onAutoPlayComplete = onAutoPlayComplete;
+  }
+
+  /**
+   * Starts the turn timer for the current player
+   */
+  startTurnTimer(): void {
+    this.stopTurnTimer();
+    
+    if (!this.gameState || this.status !== 'playing') {
+      return;
+    }
+
+    // Initialize timer in game state
+    this.gameState = {
+      ...this.gameState,
+      turnTimeRemaining: TURN_TIME_LIMIT,
+      turnStartedAt: Date.now()
+    };
+
+    this.logger.debug(`Turn timer started for player ${this.gameState.currentPlayerIndex}`);
+
+    // Start countdown interval
+    this.turnTimer = setInterval(() => {
+      if (!this.gameState) {
+        this.stopTurnTimer();
+        return;
+      }
+
+      const elapsed = Math.floor((Date.now() - this.gameState.turnStartedAt) / 1000);
+      const remaining = Math.max(0, TURN_TIME_LIMIT - elapsed);
+      
+      this.gameState = {
+        ...this.gameState,
+        turnTimeRemaining: remaining
+      };
+
+      // Notify clients
+      if (this.onTimerUpdate) {
+        this.onTimerUpdate(remaining, this.gameState.currentPlayerIndex);
+      }
+
+      // Time's up - enter auto mode
+      if (remaining <= 0) {
+        this.handleTurnTimeout();
+      }
+    }, TIMER_UPDATE_INTERVAL);
+  }
+
+  /**
+   * Stops the turn timer
+   */
+  stopTurnTimer(): void {
+    if (this.turnTimer) {
+      clearInterval(this.turnTimer);
+      this.turnTimer = null;
+    }
+    if (this.autoPlayTimeout) {
+      clearTimeout(this.autoPlayTimeout);
+      this.autoPlayTimeout = null;
+    }
+  }
+
+  /**
+   * Handles turn timeout - puts player into auto mode
+   */
+  private handleTurnTimeout(): void {
+    this.stopTurnTimer();
+    
+    if (!this.gameState) return;
+
+    const currentPlayerIndex = this.gameState.currentPlayerIndex;
+    
+    // Add player to auto mode if not already
+    if (!this.gameState.autoModePlayerIndices.includes(currentPlayerIndex)) {
+      this.gameState = {
+        ...this.gameState,
+        autoModePlayerIndices: [...this.gameState.autoModePlayerIndices, currentPlayerIndex]
+      };
+      
+      this.logger.info(`Player ${currentPlayerIndex} entered auto mode due to timeout`);
+      
+      // Notify clients
+      if (this.onAutoModeChange) {
+        this.onAutoModeChange(currentPlayerIndex, true);
+      }
+    }
+
+    // Execute auto play
+    this.executeAutoPlay();
+  }
+
+  /**
+   * Checks if current player is in auto mode and executes auto play
+   */
+  checkAndExecuteAutoPlay(): void {
+    if (!this.gameState) return;
+    
+    const currentPlayerIndex = this.gameState.currentPlayerIndex;
+    if (this.gameState.autoModePlayerIndices.includes(currentPlayerIndex)) {
+      // Small delay before auto play to show timer reaching 0
+      this.autoPlayTimeout = setTimeout(() => {
+        this.executeAutoPlay();
+      }, 500);
+    }
+  }
+
+  /**
+   * Executes auto play for current player
+   */
+  private executeAutoPlay(): void {
+    if (!this.gameState) return;
+
+    const currentPlayerIndex = this.gameState.currentPlayerIndex;
+    const actions = getAutoPlayActions(this.gameState, currentPlayerIndex);
+
+    if (actions.length === 0) {
+      this.logger.warn(`No auto play actions available for player ${currentPlayerIndex}`);
+      return;
+    }
+
+    this.logger.debug(`Executing ${actions.length} auto play actions for player ${currentPlayerIndex}`);
+
+    // Execute actions sequentially with small delays
+    this.executeActionsSequentially(actions, 0);
+  }
+
+  /**
+   * Executes a sequence of actions with delays
+   */
+  private executeActionsSequentially(actions: AutoPlayAction[], index: number): void {
+    if (index >= actions.length || !this.gameState) {
+      // All actions complete, notify and restart timer for next turn
+      if (this.onAutoPlayComplete) {
+        this.onAutoPlayComplete();
+      }
+      return;
+    }
+
+    const action = actions[index];
+    let gameAction: GameAction | null = null;
+
+    switch (action.type) {
+      case 'SELECT_CARD':
+        if (action.cardId) {
+          gameAction = { type: 'SELECT_CARD', cardId: action.cardId };
+        }
+        break;
+      case 'SELECT_MARBLE':
+        if (action.marbleId) {
+          gameAction = { type: 'SELECT_MARBLE', marbleId: action.marbleId };
+        }
+        break;
+      case 'SELECT_TARGET_NODE':
+        if (action.nodeId) {
+          gameAction = { type: 'SELECT_TARGET_NODE', nodeId: action.nodeId };
+        }
+        break;
+      case 'CONFIRM_MOVE':
+        gameAction = { type: 'CONFIRM_MOVE' };
+        break;
+      case 'BURN_CARD':
+        gameAction = { type: 'BURN_CARD' };
+        break;
+    }
+
+    if (gameAction) {
+      const newState = this.gameLogic.enhancedGameReducer(this.gameState, gameAction);
+      if (newState !== this.gameState) {
+        this.gameState = newState;
+        this.lastActivityAt = Date.now();
+        
+        // Broadcast state update
+        this.broadcastStateUpdate();
+      }
+    }
+
+    // Schedule next action
+    this.autoPlayTimeout = setTimeout(() => {
+      this.executeActionsSequentially(actions, index + 1);
+    }, 300);
+  }
+
+  /**
+   * Removes a player from auto mode
+   */
+  removeFromAutoMode(playerIndex: number): void {
+    if (!this.gameState) return;
+    
+    const newAutoMode = this.gameState.autoModePlayerIndices.filter(i => i !== playerIndex);
+    if (newAutoMode.length !== this.gameState.autoModePlayerIndices.length) {
+      this.gameState = {
+        ...this.gameState,
+        autoModePlayerIndices: newAutoMode
+      };
+      
+      if (this.onAutoModeChange) {
+        this.onAutoModeChange(playerIndex, false);
+      }
+      
+      this.logger.info(`Player ${playerIndex} exited auto mode`);
+    }
+  }
+
+  /**
+   * Checks if a player is in auto mode
+   */
+  isPlayerInAutoMode(playerIndex: number): boolean {
+    return this.gameState?.autoModePlayerIndices.includes(playerIndex) ?? false;
+  }
+
+  /**
+   * Cleanup when room is destroyed
+   */
+  destroy(): void {
+    this.stopTurnTimer();
+    this.onTimerUpdate = null;
+    this.onAutoModeChange = null;
+    this.onAutoPlayComplete = null;
+    this.logger.info('Room destroyed');
   }
 }

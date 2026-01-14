@@ -106,6 +106,11 @@ export interface GameState {
   } | null;
   
   lastActionLog: string[];
+  
+  // Turn Timer & Auto Mode
+  turnTimeRemaining: number; // Seconds remaining for current turn (15s max)
+  turnStartedAt: number; // Timestamp when turn started
+  autoModePlayerIndices: number[]; // Players in auto/trusteeship mode
 }
 
 // Action Types for Reducer

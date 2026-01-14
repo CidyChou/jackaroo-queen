@@ -5,3 +5,4 @@ export * from './boardService.js';
 export * from './moveEngine.js';
 export * from './gameLogic.js';
 export * from './protocol.js';
+export * from './BotLogic.js';

@@ -58,6 +58,8 @@ export type ServerMessageType =
   | 'PLAYER_LEFT'
   | 'GAME_STARTED'
   | 'STATE_UPDATE'
+  | 'TIMER_UPDATE'
+  | 'AUTO_MODE_CHANGED'
   | 'ERROR'
   | 'PONG';
 
@@ -104,6 +106,18 @@ export interface PongMessage {
   type: 'PONG';
 }
 
+export interface TimerUpdateMessage {
+  type: 'TIMER_UPDATE';
+  timeRemaining: number; // Seconds remaining
+  currentPlayerIndex: number;
+}
+
+export interface AutoModeChangedMessage {
+  type: 'AUTO_MODE_CHANGED';
+  playerIndex: number;
+  isAutoMode: boolean;
+}
+
 export type ServerMessage =
   | RoomCreatedMessage
   | RoomJoinedMessage
@@ -111,6 +125,8 @@ export type ServerMessage =
   | PlayerLeftMessage
   | GameStartedMessage
   | StateUpdateMessage
+  | TimerUpdateMessage
+  | AutoModeChangedMessage
   | ErrorMessage
   | PongMessage;
 
