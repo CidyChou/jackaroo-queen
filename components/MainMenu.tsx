@@ -4,9 +4,10 @@ import { motion } from 'framer-motion';
 
 interface MainMenuProps {
   onStartGame: (players: 2 | 4) => void;
+  onStartOnlineMatch: () => void;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartOnlineMatch }) => {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 via-[#0f172a] to-black flex flex-col items-center justify-center p-4 text-white relative overflow-hidden">
       
@@ -48,6 +49,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
            color="red"
            onClick={() => onStartGame(4)} 
         />
+        <MenuButton 
+           title="Online Match" 
+           subtitle="1v1 PvP • Real Opponent"
+           color="green"
+           onClick={onStartOnlineMatch} 
+        />
       </div>
       
       <div className="absolute bottom-8 text-slate-700 text-xs font-mono">
@@ -66,11 +73,17 @@ const MenuButton = ({ title, subtitle, color, onClick }: any) => (
     onClick={onClick}
     className={`
       relative overflow-hidden group p-6 rounded-2xl border border-white/10
-      ${color === 'blue' ? 'bg-indigo-900/40 hover:bg-indigo-800/60' : 'bg-rose-900/40 hover:bg-rose-800/60'}
+      ${color === 'blue' ? 'bg-indigo-900/40 hover:bg-indigo-800/60' : 
+        color === 'green' ? 'bg-emerald-900/40 hover:bg-emerald-800/60' : 
+        'bg-rose-900/40 hover:bg-rose-800/60'}
       backdrop-blur-md transition-all shadow-xl text-left
     `}
   >
-    <div className={`absolute inset-0 bg-gradient-to-r ${color === 'blue' ? 'from-blue-600/20 to-purple-600/20' : 'from-red-600/20 to-orange-600/20'} opacity-0 group-hover:opacity-100 transition-opacity`} />
+    <div className={`absolute inset-0 bg-gradient-to-r ${
+      color === 'blue' ? 'from-blue-600/20 to-purple-600/20' : 
+      color === 'green' ? 'from-emerald-600/20 to-teal-600/20' : 
+      'from-red-600/20 to-orange-600/20'
+    } opacity-0 group-hover:opacity-100 transition-opacity`} />
     
     <div className="relative flex items-center justify-between">
       <div>
@@ -78,7 +91,7 @@ const MenuButton = ({ title, subtitle, color, onClick }: any) => (
         <div className="text-white/60 text-sm font-medium mt-1">{subtitle}</div>
       </div>
       <div className="text-4xl opacity-50 group-hover:opacity-100 transition-all group-hover:rotate-12 group-hover:scale-110">
-        {color === 'blue' ? '⚔️' : '🔥'}
+        {color === 'blue' ? '⚔️' : color === 'green' ? '🌐' : '🔥'}
       </div>
     </div>
   </motion.button>

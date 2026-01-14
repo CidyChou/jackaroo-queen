@@ -203,15 +203,57 @@ export class MessageHandler implements IMessageHandler {
 
   /**
    * Handles CREATE_ROOM message
+   * Implements auto-matchmaking: joins existing waiting room if available, otherwise creates new room
    */
   private handleCreateRoom(session: PlayerSession, msg: CreateRoomMessage): void {
-    // Check if already in a room
+    // If already in a room, leave it first (graceful handling for reconnection scenarios)
     if (session.isInRoom()) {
-      session.send(createErrorMessage('VALIDATION_ERROR', 'Already in a room'));
-      return;
+      const oldRoomCode = session.getRoomCode();
+      this.logger.info(`Session ${session.sessionId} leaving old room ${oldRoomCode} before matchmaking`);
+      this.roomManager.leaveRoom(session.sessionId);
     }
 
-    // Create the room
+    // Try to find an existing waiting room first (auto-matchmaking)
+    const waitingRoom = this.roomManager.findWaitingRoom(msg.playerCount);
+    
+    if (waitingRoom) {
+      // Join the existing waiting room
+      const room = this.roomManager.joinRoom(waitingRoom.roomCode, session);
+      if (room) {
+        const playerIndex = room.getPlayerIndexBySessionId(session.sessionId);
+
+        // Send ROOM_JOINED to the joining player
+        const joinedResponse: ServerMessage = {
+          type: 'ROOM_JOINED',
+          roomCode: room.roomCode,
+          playerIndex: playerIndex!,
+          players: room.getPlayerInfo(),
+        };
+        session.send(joinedResponse);
+
+        // Notify other players that someone joined
+        const playerJoinedMessage: ServerMessage = {
+          type: 'PLAYER_JOINED',
+          playerIndex: playerIndex!,
+        };
+
+        for (const player of room.getPlayers()) {
+          if (player.sessionId !== session.sessionId) {
+            player.send(playerJoinedMessage);
+          }
+        }
+
+        this.logger.info(`Player ${session.sessionId} auto-matched into room ${room.roomCode}`);
+
+        // Auto-start game if room is full
+        if (room.isFull()) {
+          this.startGame(room);
+        }
+        return;
+      }
+    }
+
+    // No waiting room found, create a new one
     const room = this.roomManager.createRoom(session, msg.playerCount);
     const playerIndex = room.getPlayerIndexBySessionId(session.sessionId);
 

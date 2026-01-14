@@ -27,8 +27,10 @@ const DraggableCardComponent: React.FC<DraggableCardProps> = ({
   const [burnStage, setBurnStage] = useState<'idle' | 'burning'>('idle');
 
   // Helpers for visual style
-  const getSuitColor = (suit: string) => 
-    (suit === 'hearts' || suit === 'diamonds') ? 'text-red-600' : 'text-slate-900';
+  const getSuitColor = (suit: string) => {
+    console.log('[DraggableCard] getSuitColor called with suit:', suit);
+    return (suit === 'hearts' || suit === 'diamonds') ? 'text-red-600' : 'text-slate-900';
+  };
 
   const getSuitIcon = (suit: string) => {
     switch(suit) {

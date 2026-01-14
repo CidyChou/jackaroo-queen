@@ -44,8 +44,10 @@ export const filterStateForPlayer = (
 ): GameState => {
   const filteredPlayers = state.players.map((player: Player, index: number) => {
     if (index === playerIndex) {
+      console.log(`[filterStateForPlayer] Player ${playerIndex} sees own hand:`, player.hand.map(c => `${c.rank} of ${c.suit}`));
       return player; // Own hand is fully visible
     }
+    console.log(`[filterStateForPlayer] Player ${playerIndex} sees hidden hand for player ${index}`);
     return {
       ...player,
       hand: player.hand.map((card: Card) => ({

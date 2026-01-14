@@ -138,6 +138,21 @@ export class RoomManager {
   }
 
   /**
+   * Finds a waiting room that matches the player count
+   * Returns the first room that is waiting and not full
+   */
+  findWaitingRoom(playerCount: 2 | 4): Room | null {
+    for (const room of this.rooms.values()) {
+      if (room.getStatus() === 'waiting' && 
+          room.maxPlayers === playerCount && 
+          !room.isFull()) {
+        return room;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Gets the room a session is in
    */
   getRoomBySessionId(sessionId: string): Room | null {
