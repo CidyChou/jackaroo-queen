@@ -257,14 +257,13 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
                 hand: deck.splice(0, cardsToDeal)
               }));
               
-              const nextStartPlayerIndex = (attackerIdx + 1) % state.players.length;
-              
+              // Attacker continues after dealing new cards
               return {
                 ...state,
                 players: nextRoundPlayers,
                 deck,
                 discardPile: discard,
-                currentPlayerIndex: nextStartPlayerIndex,
+                currentPlayerIndex: attackerIdx,
                 currentRound: nextRound,
                 selectedCardId: null,
                 selectedMarbleId: null,
@@ -276,19 +275,12 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
               };
             }
             
-            // Find next player with cards
-            let nextIndex = attackerIdx;
-            let loopCount = 0;
-            while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
-              nextIndex = (nextIndex + 1) % newPlayers.length;
-              loopCount++;
-            }
-            
+            // Attacker continues (they still have their turn)
             return {
               ...state,
               players: newPlayers,
               discardPile: newDiscard,
-              currentPlayerIndex: nextIndex,
+              currentPlayerIndex: attackerIdx,
               pendingAttackerIndex: null,
               phase: 'TURN_START',
               selectedCardId: null,
@@ -360,14 +352,13 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
               hand: deck.splice(0, cardsToDeal)
             }));
             
-            const nextStartPlayerIndex = (attackerIdx + 1) % state.players.length;
-            
+            // Attacker continues after dealing new cards
             return {
               ...state,
               players: nextRoundPlayers,
               deck,
               discardPile: discard,
-              currentPlayerIndex: nextStartPlayerIndex,
+              currentPlayerIndex: attackerIdx,
               currentRound: nextRound,
               selectedCardId: null,
               selectedMarbleId: null,
@@ -379,19 +370,12 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
             };
           }
           
-          // Find next player with cards
-          let nextIndex = attackerIdx;
-          let loopCount = 0;
-          while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
-            nextIndex = (nextIndex + 1) % newPlayers.length;
-            loopCount++;
-          }
-          
+          // Attacker continues (they still have their turn)
           return {
             ...state,
             players: newPlayers,
             discardPile: newDiscard,
-            currentPlayerIndex: nextIndex,
+            currentPlayerIndex: attackerIdx,
             pendingAttackerIndex: null,
             phase: 'TURN_START',
             selectedCardId: null,
@@ -583,14 +567,13 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
                 hand: deck.splice(0, cardsToDeal)
               }));
               
-              const nextStartPlayerIndex = (attackerIdx + 1) % state.players.length;
-              
+              // Attacker continues after dealing new cards
               return {
                 ...state,
                 players: nextRoundPlayers,
                 deck,
                 discardPile: discard,
-                currentPlayerIndex: nextStartPlayerIndex,
+                currentPlayerIndex: attackerIdx,
                 currentRound: nextRound,
                 selectedCardId: null,
                 selectedMarbleId: null,
@@ -602,19 +585,12 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
               };
             }
             
-            // Find next player with cards
-            let nextIndex = attackerIdx;
-            let loopCount = 0;
-            while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
-              nextIndex = (nextIndex + 1) % newPlayers.length;
-              loopCount++;
-            }
-
+            // Attacker continues (they still have their turn)
             return {
                 ...state,
                 players: newPlayers,
                 discardPile: cardToBurn,
-                currentPlayerIndex: nextIndex,
+                currentPlayerIndex: attackerIdx,
                 pendingAttackerIndex: null,
                 phase: 'TURN_START',
                 selectedCardId: null,
