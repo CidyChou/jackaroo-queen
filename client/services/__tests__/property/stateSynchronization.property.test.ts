@@ -11,8 +11,8 @@
 import * as fc from 'fast-check';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketService } from '../../WebSocketService';
-import type { GameState, Player, Marble, BoardNode, Card, GamePhase, PlayerColor } from '../../../shared/types';
-import type { StateUpdateMessage } from '../../../shared/protocol';
+import type { GameState, Player, Marble, BoardNode, Card, GamePhase, PlayerColor } from '@shared/types';
+import type { StateUpdateMessage } from '@shared/protocol';
 
 // ============================================
 // Mock WebSocket

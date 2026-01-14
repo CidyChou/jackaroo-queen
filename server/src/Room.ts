@@ -208,6 +208,17 @@ export class Room {
     }
 
     this.gameState = this.gameLogic.createInitialState(this.maxPlayers);
+    
+    // In online mode, all players are real humans, not bots
+    // This ensures special card logic (10, Q, 7) works correctly for all players
+    this.gameState = {
+      ...this.gameState,
+      players: this.gameState.players.map(player => ({
+        ...player,
+        isBot: false
+      }))
+    };
+    
     this.status = 'playing';
     this.lastActivityAt = Date.now();
 

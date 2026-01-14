@@ -25,65 +25,67 @@ Jackaroo Queen 是一款 1v1 策略棋盘游戏，玩家通过打出扑克牌来
 
 ```
 jackaroo-queen/
-├── App.tsx                 # 应用入口组件
-├── index.tsx               # React 渲染入口
-├── index.html              # HTML 模板
-├── types.ts                # TypeScript 类型定义
-├── constants.ts            # 游戏常量配置
-├── vite.config.ts          # Vite 构建配置
-├── tsconfig.json           # TypeScript 配置
-├── package.json            # 项目依赖
+├── package.json            # Workspace 配置
 │
-├── components/             # UI 组件
-│   ├── Game.tsx            # 游戏主容器（本地对战）
-│   ├── OnlineGame.tsx      # 在线对战游戏容器
-│   ├── MatchmakingPage.tsx # 在线匹配页面
-│   ├── MainMenu.tsx        # 主菜单
-│   ├── Board.tsx           # 棋盘渲染
-│   ├── CardHand.tsx        # 手牌区域
-│   ├── DraggableCard.tsx   # 可拖拽卡牌
-│   ├── MarbleToken.tsx     # 棋子组件
-│   ├── BurnZone.tsx        # 弃牌区域
-│   ├── BurnNotification.tsx# 弃牌提示
-│   ├── ActionLog.tsx       # 操作日志
-│   ├── ActionChoiceModal.tsx # 行动选择弹窗
-│   └── SplitSevenControls.tsx # 7号牌分步控制
+├── client/                 # 前端客户端
+│   ├── package.json        # 客户端依赖
+│   ├── vite.config.ts      # Vite 构建配置
+│   ├── tsconfig.json       # TypeScript 配置
+│   ├── index.html          # HTML 入口模板
+│   ├── index.tsx           # React 渲染入口
+│   ├── App.tsx             # 应用入口组件
+│   ├── types.ts            # 客户端类型定义
+│   ├── constants.ts        # 客户端常量
+│   │
+│   ├── components/         # UI 组件
+│   │   ├── Game.tsx            # 游戏主容器（本地对战）
+│   │   ├── OnlineGame.tsx      # 在线对战游戏容器
+│   │   ├── MatchmakingPage.tsx # 在线匹配页面
+│   │   ├── MainMenu.tsx        # 主菜单
+│   │   ├── Board.tsx           # 棋盘渲染
+│   │   ├── CardHand.tsx        # 手牌区域
+│   │   ├── DraggableCard.tsx   # 可拖拽卡牌
+│   │   ├── MarbleToken.tsx     # 棋子组件
+│   │   ├── BurnZone.tsx        # 弃牌区域
+│   │   ├── BurnNotification.tsx# 弃牌提示
+│   │   ├── ActionLog.tsx       # 操作日志
+│   │   ├── ActionChoiceModal.tsx # 行动选择弹窗
+│   │   └── SplitSevenControls.tsx # 7号牌分步控制
+│   │
+│   └── services/           # 客户端服务
+│       ├── gameLogic.ts        # 游戏逻辑
+│       ├── moveEngine.ts       # 移动引擎
+│       ├── boardService.ts     # 棋盘服务
+│       ├── layoutService.ts    # 布局计算服务
+│       ├── coordinates.ts      # 坐标系统
+│       ├── BotLogic.ts         # AI 机器人逻辑
+│       ├── WebSocketService.ts # WebSocket 客户端服务
+│       └── __tests__/          # 客户端测试
 │
-├── services/               # 客户端服务
-│   ├── gameLogic.ts        # 核心游戏逻辑
-│   ├── moveEngine.ts       # 移动计算引擎
-│   ├── boardService.ts     # 棋盘状态管理
-│   ├── layoutService.ts    # 布局计算服务
-│   ├── coordinates.ts      # 坐标系统
-│   ├── BotLogic.ts         # AI 机器人逻辑
-│   ├── WebSocketService.ts # WebSocket 客户端服务
-│   └── __tests__/          # 客户端测试
-│       └── property/       # 属性测试
+├── server/                 # 后端服务器
+│   ├── package.json        # 服务器依赖
+│   ├── tsconfig.json       # 服务器 TS 配置
+│   └── src/
+│       ├── index.ts            # 服务器入口
+│       ├── WebSocketServer.ts  # WebSocket 服务器
+│       ├── RoomManager.ts      # 房间管理器
+│       ├── Room.ts             # 房间实例
+│       ├── PlayerSession.ts    # 玩家会话
+│       ├── MessageHandler.ts   # 消息处理器
+│       ├── RateLimiter.ts      # 速率限制器
+│       ├── HealthCheckServer.ts# 健康检查服务
+│       ├── Logger.ts           # 日志服务
+│       ├── protocol.ts         # 服务器协议
+│       └── __tests__/          # 服务器测试
 │
-├── shared/                 # 客户端/服务器共享代码
-│   ├── protocol.ts         # 消息协议定义
-│   ├── types.ts            # 共享类型定义
-│   ├── gameLogic.ts        # 共享游戏逻辑
-│   ├── moveEngine.ts       # 共享移动引擎
-│   ├── boardService.ts     # 共享棋盘服务
-│   ├── constants.ts        # 共享常量
-│   └── index.ts            # 导出入口
-│
-└── server/                 # 游戏服务器
-    ├── package.json        # 服务器依赖
-    ├── tsconfig.json       # 服务器 TS 配置
-    └── src/
-        ├── index.ts        # 服务器入口
-        ├── WebSocketServer.ts # WebSocket 服务器
-        ├── RoomManager.ts  # 房间管理器
-        ├── Room.ts         # 房间实例
-        ├── PlayerSession.ts # 玩家会话
-        ├── MessageHandler.ts # 消息处理器
-        ├── RateLimiter.ts  # 速率限制器
-        ├── HealthCheckServer.ts # 健康检查服务
-        ├── Logger.ts       # 日志服务
-        ├── protocol.ts     # 服务器协议
-        └── __tests__/      # 服务器测试
+└── shared/                 # 前后端共享代码
+    ├── index.ts            # 导出入口
+    ├── protocol.ts         # 消息协议定义
+    ├── types.ts            # 共享类型定义
+    ├── gameLogic.ts        # 核心游戏逻辑
+    ├── moveEngine.ts       # 移动计算引擎
+    ├── boardService.ts     # 棋盘状态管理
+    └── constants.ts        # 共享常量
 ```
 
 ---
@@ -198,41 +200,42 @@ jackaroo-queen/
 - Node.js 18+
 - npm 或 yarn
 
+### 安装依赖
+
+```bash
+# 根目录安装所有 workspace 依赖
+npm install
+```
+
 ### 客户端
 
 ```bash
-# 安装依赖
-npm install
-
 # 启动开发服务器
 npm run dev
 
 # 构建生产版本
 npm run build
 
-# 运行测试
-npm test
+# 运行客户端测试
+npm run test:client
 ```
 
 ### 服务器
 
 ```bash
-# 进入服务器目录
-cd server
-
-# 安装依赖
-npm install
-
 # 启动开发服务器
-npm run dev
-
-# 构建生产版本
-npm run build
+npm run server:dev
 
 # 启动生产服务器
-npm start
+npm run server:start
 
-# 运行测试
+# 运行服务器测试
+npm run test:server
+```
+
+### 运行所有测试
+
+```bash
 npm test
 ```
 

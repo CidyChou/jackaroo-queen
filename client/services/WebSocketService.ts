@@ -24,9 +24,9 @@ export type {
   ErrorMessage,
   PongMessage,
   ErrorCode,
-} from '../shared/protocol';
+} from '@shared/protocol';
 
-import type { ClientMessage, ServerMessage } from '../shared/protocol';
+import type { ClientMessage, ServerMessage } from '@shared/protocol';
 
 // ============================================
 // Connection State

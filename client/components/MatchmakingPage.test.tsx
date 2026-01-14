@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MatchmakingPage, MatchmakingPageProps } from './MatchmakingPage';
 import { webSocketService, ConnectionState, ServerMessage } from '../services/WebSocketService';
-import type { GameState } from '../shared/types';
+import type { GameState } from '@shared/types';
 
 // Mock framer-motion to avoid animation issues in tests
 vi.mock('framer-motion', () => ({

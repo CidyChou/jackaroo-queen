@@ -5,4 +5,4 @@ export {
   enhancedGameReducer,
   createGameLogic,
   type GameLogicConfig 
-} from '../shared/gameLogic';
+} from '@shared/gameLogic';

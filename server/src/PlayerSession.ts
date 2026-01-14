@@ -11,7 +11,7 @@
  */
 
 import { WebSocket } from 'ws';
-import { ServerMessage, serializeServerMessage } from './protocol.js';
+import { ServerMessage, serializeServerMessage } from '../../shared/protocol.js';
 import { Logger } from './Logger.js';
 
 export type SessionStatus = 'connected' | 'disconnected' | 'reconnecting';

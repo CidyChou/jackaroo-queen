@@ -15,7 +15,7 @@ import { SplitSevenControls } from './SplitSevenControls';
 import { ActionLog } from './ActionLog';
 import { AnimatePresence, motion } from 'framer-motion';
 import { webSocketService, ServerMessage } from '../services/WebSocketService';
-import type { GameState, GameAction } from '../shared/types';
+import type { GameState, GameAction } from '@shared/types';
 
 // ============================================
 // Types
@@ -82,7 +82,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
     
     if (gameState.phase === 'OPPONENT_DISCARD') return true;
 
+    // Check if any card in hand has valid moves
     const hasAnyMove = myPlayer.hand.some(card => {
+      // Skip hidden cards (shouldn't happen for own hand but safety check)
+      if (card.rank === 'hidden' as any) return false;
       const moves = calculateValidMoves(gameState, myPlayer, card, null);
       return moves.length > 0;
     });
@@ -90,9 +93,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
     return !hasAnyMove;
   }, [
     isMyTurn,
-    myPlayer.hand,
+    myPlayer,  // Use full myPlayer object to catch all property changes
     gameState.phase,
     gameState.marbles,
+    gameState.board,  // Add board dependency
     gameState.currentRound,
     gameState.currentPlayerIndex
   ]);
@@ -508,6 +512,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
             gameState={gameState}
             onMarbleClick={handleMarbleClick}
             onNodeClick={handleNodeClick}
+            playerIndex={playerIndex}
+            playerCount={gameState.players.length}
           />
 
           <AnimatePresence>

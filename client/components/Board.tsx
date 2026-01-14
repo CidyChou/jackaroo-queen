@@ -8,10 +8,40 @@ interface BoardProps {
   gameState: GameState;
   onMarbleClick: (marbleId: string) => void;
   onNodeClick: (nodeId: string) => void;
+  /** Current player's index (0-3), used to rotate board so player's pieces are at bottom */
+  playerIndex?: number;
+  /** Total number of players (2 or 4), affects rotation calculation */
+  playerCount?: number;
 }
 
-export const Board: React.FC<BoardProps> = ({ gameState, onMarbleClick, onNodeClick }) => {
+/**
+ * Calculate rotation angle so the current player's pieces appear at the bottom
+ * - 2 players: red(0)=0°, yellow(1)=180°
+ * - 4 players: red(0)=0°, blue(1)=90°, yellow(2)=180°, green(3)=270°
+ */
+const calculateBoardRotation = (playerIndex: number, playerCount: number): number => {
+  if (playerCount === 2) {
+    // 2-player mode: positions are 0 (red/bottom) and 1 (yellow/top)
+    return playerIndex === 0 ? 0 : 180;
+  }
+  // 4-player mode: each player rotates 90° * their index
+  return playerIndex * 90;
+};
+
+export const Board: React.FC<BoardProps> = ({ 
+  gameState, 
+  onMarbleClick, 
+  onNodeClick,
+  playerIndex = 0,
+  playerCount = 2
+}) => {
   const coordinates = COORDINATES;
+  
+  // Calculate board rotation based on player position
+  const boardRotation = useMemo(() => 
+    calculateBoardRotation(playerIndex, playerCount),
+    [playerIndex, playerCount]
+  );
 
   // Helpers to determine visual state
   const getHighlightState = (nodeId: string) => {
@@ -41,8 +71,11 @@ export const Board: React.FC<BoardProps> = ({ gameState, onMarbleClick, onNodeCl
 
   return (
     <div 
-      className="relative w-full h-full rounded-full shadow-2xl border-[8px] sm:border-[12px] border-amber-900 overflow-hidden bg-amber-800"
-      style={{ aspectRatio: '1/1' }} // Force aspect ratio inline for safety
+      className="relative w-full h-full rounded-full shadow-2xl border-[8px] sm:border-[12px] border-amber-900 overflow-hidden bg-amber-800 transition-transform duration-500"
+      style={{ 
+        aspectRatio: '1/1',
+        transform: `rotate(${boardRotation}deg)`
+      }}
     >
       
       {/* --- Background Layer --- */}

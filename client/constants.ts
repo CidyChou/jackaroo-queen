@@ -8,4 +8,4 @@ export {
   RANKS,
   CARD_VALUES,
   START_POSITIONS
-} from './shared/constants';
+} from '@shared/constants';

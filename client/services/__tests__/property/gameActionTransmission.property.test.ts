@@ -11,8 +11,8 @@
 import * as fc from 'fast-check';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketService } from '../../WebSocketService';
-import type { GameAction } from '../../../shared/types';
-import { validateClientMessage } from '../../../shared/protocol';
+import type { GameAction } from '@shared/types';
+import { validateClientMessage } from '@shared/protocol';
 
 // Mock WebSocket for testing
 class MockWebSocket {

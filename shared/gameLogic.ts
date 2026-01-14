@@ -1,12 +1,12 @@
 import { 
   GameState, GameAction, Player, Card, Marble, 
   PlayerColor, BoardNode, GamePhase 
-} from './types';
+} from './types.js';
 import { 
   PLAYER_COLORS, SUITS, RANKS, START_POSITIONS 
-} from './constants';
-import { generateBoard } from './boardService';
-import { calculateValidMoves, executeMove } from './moveEngine';
+} from './constants.js';
+import { generateBoard } from './boardService.js';
+import { calculateValidMoves, executeMove } from './moveEngine.js';
 
 // --- Dependency Injection Interface ---
 export interface GameLogicConfig {

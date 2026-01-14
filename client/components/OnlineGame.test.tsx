@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import type { GameState, Player, Card, Marble, BoardNode } from '../shared/types';
+import type { GameState, Player, Card, Marble, BoardNode } from '@shared/types';
 
 // Mock moveEngine before importing OnlineGame
 vi.mock('../services/moveEngine', () => ({

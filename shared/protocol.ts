@@ -4,7 +4,7 @@
  * Defines all client-server message types and validation
  */
 
-import { GameState, GameAction } from './types';
+import { GameState, GameAction } from './types.js';
 
 // ============================================
 // Client -> Server Messages

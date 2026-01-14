@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { webSocketService, ConnectionState, ServerMessage } from '../services/WebSocketService';
-import type { GameState } from '../shared/types';
+import type { GameState } from '@shared/types';
 
 // ============================================
 // Types

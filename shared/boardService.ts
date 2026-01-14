@@ -1,5 +1,5 @@
-import { BoardNode, PlayerColor } from "./types";
-import { TOTAL_BOARD_NODES, PLAYER_COLORS, START_POSITIONS, HOME_PATH_LENGTH } from "./constants";
+import { BoardNode, PlayerColor } from "./types.js";
+import { TOTAL_BOARD_NODES, PLAYER_COLORS, START_POSITIONS, HOME_PATH_LENGTH } from "./constants.js";
 
 export const generateBoard = (): Record<string, BoardNode> => {
   const nodes: Record<string, BoardNode> = {};

@@ -25,7 +25,7 @@ import {
   ErrorCode,
   parseClientMessage,
   createErrorMessage,
-} from './protocol.js';
+} from '../../shared/protocol.js';
 import { GameAction } from '../../shared/types.js';
 
 export interface MessageHandlerConfig {

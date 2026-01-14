@@ -3,7 +3,7 @@ import { Game } from './components/Game';
 import { MainMenu } from './components/MainMenu';
 import { MatchmakingPage } from './components/MatchmakingPage';
 import { OnlineGame } from './components/OnlineGame';
-import type { GameState } from './shared/types';
+import type { GameState } from '@shared/types';
 
 // App modes including online matchmaking and game
 type AppMode = 'MENU' | 'GAME' | 'MATCHMAKING' | 'ONLINE_GAME';

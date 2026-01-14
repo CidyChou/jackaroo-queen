@@ -1,5 +1,5 @@
-import { GameState, Card, Player, Marble, BoardNode, MoveCandidate, PlayerColor, Suit } from './types';
-import { START_POSITIONS } from './constants';
+import { GameState, Card, Player, Marble, BoardNode, MoveCandidate, PlayerColor, Suit } from './types.js';
+import { START_POSITIONS } from './constants.js';
 
 // --- Helpers ---
 
@@ -87,7 +87,10 @@ export const calculateValidMoves = (
      const m = gameState.marbles[selectedMarbleId];
      if (m) candidateMarbles = [m];
   } else {
-     candidateMarbles = player.marbles.map(id => gameState.marbles[id]);
+     // Filter out undefined values in case of state sync issues
+     candidateMarbles = player.marbles
+       .map(id => gameState.marbles[id])
+       .filter((m): m is Marble => m !== undefined);
   }
 
   candidateMarbles.forEach(marble => {
@@ -124,12 +127,13 @@ export const calculateValidMoves = (
     if (card.rank === 'J' && isBlack(card.suit) && !stepsOverride) {
        if (marble.ownerId !== player.id) return;
 
-       const targets = Object.values(gameState.marbles).filter(target => 
-          target.ownerId !== player.id &&
-          target.position !== 'BASE' && 
-          target.position !== 'HOME' &&
-          !target.isSafe
-       );
+       const targets = Object.values(gameState.marbles).filter(target => {
+          if (target.ownerId === player.id) return false;
+          if (target.position === 'BASE' || target.position === 'HOME') return false;
+          // Check if the NODE is safe, not the marble's isSafe property
+          const nodeIsSafe = gameState.board[target.position as string]?.isSafe ?? false;
+          return !nodeIsSafe;
+       });
 
        targets.forEach(target => {
         moves.push({
@@ -190,7 +194,10 @@ export const calculateValidMoves = (
        if (isKillPath) {
           result.path.forEach(nodeId => {
             const pathOccupant = Object.values(gameState.marbles).find(m => m.position === nodeId);
-            if (pathOccupant && pathOccupant.id !== marble.id && !pathOccupant.isSafe) {
+            // Check if the NODE is safe, not the marble's isSafe property
+            // A marble on a safe node (start position, home path) cannot be killed
+            const nodeIsSafe = gameState.board[nodeId]?.isSafe ?? false;
+            if (pathOccupant && pathOccupant.id !== marble.id && !nodeIsSafe) {
                if (!kills.includes(pathOccupant.id)) kills.push(pathOccupant.id);
             }
           });

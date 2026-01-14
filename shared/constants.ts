@@ -1,4 +1,4 @@
-import { PlayerColor, Rank, Suit } from "./types";
+import { PlayerColor, Rank, Suit } from "./types.js";
 
 export const BOARD_SEGMENT_LENGTH = 13; // Standard jackaroo is often 13 per player section
 export const TOTAL_BOARD_NODES = BOARD_SEGMENT_LENGTH * 4;

@@ -3,4 +3,4 @@ export {
   traversePath, 
   calculateValidMoves, 
   executeMove 
-} from '../shared/moveEngine';
+} from '@shared/moveEngine';
