@@ -230,6 +230,72 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
 
           const attackerIdx = state.currentPlayerIndex;
           const victimIdx = (attackerIdx + 1) % state.players.length;
+          const victim = state.players[victimIdx];
+
+          // If victim has no cards to discard, skip OPPONENT_DISCARD phase
+          if (victim.hand.length === 0) {
+            const attackLog = [...state.lastActionLog, `${player.color} played 10: ATTACK!`, `${victim.color} has no cards to discard.`];
+            
+            // Check if all players have empty hands - need to deal new cards
+            const allHandsEmpty = newPlayers.every(p => p.hand.length === 0);
+            
+            if (allHandsEmpty) {
+              let deck = [...state.deck];
+              let discard = [...newDiscard];
+              
+              const nextRound = state.currentRound + 1;
+              
+              if ((state.currentRound % 3 === 0) || deck.length < newPlayers.length * 5) {
+                deck = shuffleArray([...deck, ...discard]);
+                discard = [];
+              }
+              
+              const cardsToDeal = (nextRound - 1) % 3 === 2 ? 5 : 4;
+              
+              const nextRoundPlayers = newPlayers.map(p => ({
+                ...p,
+                hand: deck.splice(0, cardsToDeal)
+              }));
+              
+              const nextStartPlayerIndex = (attackerIdx + 1) % state.players.length;
+              
+              return {
+                ...state,
+                players: nextRoundPlayers,
+                deck,
+                discardPile: discard,
+                currentPlayerIndex: nextStartPlayerIndex,
+                currentRound: nextRound,
+                selectedCardId: null,
+                selectedMarbleId: null,
+                possibleMoves: [],
+                pendingAttackerIndex: null,
+                phase: 'TURN_START',
+                repeatTurn: false,
+                lastActionLog: [...attackLog, `Round ${nextRound} - Deal ${cardsToDeal}`]
+              };
+            }
+            
+            // Find next player with cards
+            let nextIndex = attackerIdx;
+            let loopCount = 0;
+            while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
+              nextIndex = (nextIndex + 1) % newPlayers.length;
+              loopCount++;
+            }
+            
+            return {
+              ...state,
+              players: newPlayers,
+              discardPile: newDiscard,
+              currentPlayerIndex: nextIndex,
+              pendingAttackerIndex: null,
+              phase: 'TURN_START',
+              selectedCardId: null,
+              possibleMoves: [],
+              lastActionLog: attackLog
+            };
+          }
 
           return {
             ...state,
@@ -267,6 +333,72 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
 
         const attackerIdx = state.currentPlayerIndex;
         const victimIdx = (attackerIdx + 1) % state.players.length;
+        const victim = state.players[victimIdx];
+
+        // If victim has no cards to discard, skip OPPONENT_DISCARD phase
+        if (victim.hand.length === 0) {
+          const attackLog = [...state.lastActionLog, `${player.color} played Red Q: ATTACK!`, `${victim.color} has no cards to discard.`];
+          
+          // Check if all players have empty hands - need to deal new cards
+          const allHandsEmpty = newPlayers.every(p => p.hand.length === 0);
+          
+          if (allHandsEmpty) {
+            let deck = [...state.deck];
+            let discard = [...newDiscard];
+            
+            const nextRound = state.currentRound + 1;
+            
+            if ((state.currentRound % 3 === 0) || deck.length < newPlayers.length * 5) {
+              deck = shuffleArray([...deck, ...discard]);
+              discard = [];
+            }
+            
+            const cardsToDeal = (nextRound - 1) % 3 === 2 ? 5 : 4;
+            
+            const nextRoundPlayers = newPlayers.map(p => ({
+              ...p,
+              hand: deck.splice(0, cardsToDeal)
+            }));
+            
+            const nextStartPlayerIndex = (attackerIdx + 1) % state.players.length;
+            
+            return {
+              ...state,
+              players: nextRoundPlayers,
+              deck,
+              discardPile: discard,
+              currentPlayerIndex: nextStartPlayerIndex,
+              currentRound: nextRound,
+              selectedCardId: null,
+              selectedMarbleId: null,
+              possibleMoves: [],
+              pendingAttackerIndex: null,
+              phase: 'TURN_START',
+              repeatTurn: false,
+              lastActionLog: [...attackLog, `Round ${nextRound} - Deal ${cardsToDeal}`]
+            };
+          }
+          
+          // Find next player with cards
+          let nextIndex = attackerIdx;
+          let loopCount = 0;
+          while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
+            nextIndex = (nextIndex + 1) % newPlayers.length;
+            loopCount++;
+          }
+          
+          return {
+            ...state,
+            players: newPlayers,
+            discardPile: newDiscard,
+            currentPlayerIndex: nextIndex,
+            pendingAttackerIndex: null,
+            phase: 'TURN_START',
+            selectedCardId: null,
+            possibleMoves: [],
+            lastActionLog: attackLog
+          };
+        }
 
         return {
           ...state,
@@ -427,17 +559,66 @@ export const createGameLogic = (config: GameLogicConfig = defaultConfig) => {
             const newPlayers = [...state.players];
             newPlayers[state.currentPlayerIndex] = { ...player, hand: newHand };
             
-            const nextPlayerIdx = state.pendingAttackerIndex !== null ? state.pendingAttackerIndex : state.currentPlayerIndex;
+            const attackerIdx = state.pendingAttackerIndex !== null ? state.pendingAttackerIndex : state.currentPlayerIndex;
+            const discardLog = [...state.lastActionLog, `${player.color} discarded ${burnedCardName}.`, `Turn returns to Attacker!`];
+            
+            // Check if all players have empty hands - need to deal new cards
+            const allHandsEmpty = newPlayers.every(p => p.hand.length === 0);
+            
+            if (allHandsEmpty) {
+              let deck = [...state.deck];
+              let discard = [...cardToBurn];
+              
+              const nextRound = state.currentRound + 1;
+              
+              if ((state.currentRound % 3 === 0) || deck.length < newPlayers.length * 5) {
+                deck = shuffleArray([...deck, ...discard]);
+                discard = [];
+              }
+              
+              const cardsToDeal = (nextRound - 1) % 3 === 2 ? 5 : 4;
+              
+              const nextRoundPlayers = newPlayers.map(p => ({
+                ...p,
+                hand: deck.splice(0, cardsToDeal)
+              }));
+              
+              const nextStartPlayerIndex = (attackerIdx + 1) % state.players.length;
+              
+              return {
+                ...state,
+                players: nextRoundPlayers,
+                deck,
+                discardPile: discard,
+                currentPlayerIndex: nextStartPlayerIndex,
+                currentRound: nextRound,
+                selectedCardId: null,
+                selectedMarbleId: null,
+                possibleMoves: [],
+                pendingAttackerIndex: null,
+                phase: 'TURN_START',
+                repeatTurn: false,
+                lastActionLog: [...discardLog, `Round ${nextRound} - Deal ${cardsToDeal}`]
+              };
+            }
+            
+            // Find next player with cards
+            let nextIndex = attackerIdx;
+            let loopCount = 0;
+            while (newPlayers[nextIndex].hand.length === 0 && loopCount < newPlayers.length) {
+              nextIndex = (nextIndex + 1) % newPlayers.length;
+              loopCount++;
+            }
 
             return {
                 ...state,
                 players: newPlayers,
                 discardPile: cardToBurn,
-                currentPlayerIndex: nextPlayerIdx,
+                currentPlayerIndex: nextIndex,
                 pendingAttackerIndex: null,
                 phase: 'TURN_START',
                 selectedCardId: null,
-                lastActionLog: [...state.lastActionLog, `${player.color} discarded ${burnedCardName}.`, `Turn returns to Attacker!`]
+                lastActionLog: discardLog
             };
          }
 
