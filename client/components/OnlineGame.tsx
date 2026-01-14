@@ -494,16 +494,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({
               exit={{ scale: 0.8, opacity: 0 }}
               className="bg-slate-800/95 backdrop-blur-md rounded-2xl border-2 border-purple-500/50 p-8 shadow-2xl text-center"
             >
-              <div className="text-6xl mb-4">🤖</div>
-              <h2 className="text-2xl font-black text-purple-400 mb-2">托管模式</h2>
-              <p className="text-slate-300 mb-6">系统正在自动帮您出牌</p>
               <button
                 onClick={handleExitAutoMode}
-                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl border-2 border-purple-400/50 text-white font-bold text-lg transition-all transform hover:scale-105 shadow-lg"
+                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-xl border-2 border-purple-400/50 text-white font-bold transition-all transform hover:scale-105 shadow-lg"
               >
                 ✋ 取消托管
               </button>
-              <p className="text-slate-500 text-sm mt-4">点击按钮恢复手动操作</p>
             </motion.div>
           </motion.div>
         )}
